@@ -1,0 +1,77 @@
+@baseUrl = http://localhost:3000/api
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIxLCJlbWFpbCI6InJldWVscmljaGFyZHMyQGdtYWlsLmNvbSIsImlzVmVyaWZpZWQiOnRydWUsImlhdCI6MTc1NjUzMTA4MiwiZXhwIjoxNzU2NTM0NjgyfQ.z2U7KjIXxeT90MxKvomNaclcE1L_BjDkONQMkO1yzuM
+@user_id = 21
+### Login to get token
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "reuelrichards2@gmail.com",
+  "password": "password"
+}
+
+### Get all prealerts for current user
+GET {{baseUrl}}/prealerts/my-prealerts
+Authorization: Bearer {{authToken}}
+
+### Get all prealerts (admin only)
+GET {{baseUrl}}/prealerts
+Authorization: Bearer {{authToken}}
+
+### Get prealert by ID
+GET {{baseUrl}}/prealerts/1
+Authorization: Bearer {{authToken}}
+
+### Create new prealert
+POST {{baseUrl}}/prealerts
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "description": "Electronics shipment from Amazon",
+  "price": 150.00,
+  "invoice_url": "https://storage.example.com/invoices/amazon123.pdf",
+  
+}
+
+### Create another prealert
+POST {{baseUrl}}/prealerts
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "description": "Clothing from Zara",
+  "price": 89.99,
+  "invoice_url": "https://storage.example.com/invoices/zara456.pdf"
+}
+
+### Update prealert
+PUT {{baseUrl}}/prealerts/1
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "description": "Updated electronics shipment",
+  "price": 175.00
+}
+
+### Confirm prealert (admin only)
+PATCH {{baseUrl}}/prealerts/1/confirm
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "package_id": "PKG001"
+}
+
+### Get prealerts by status (unconfirmed)
+GET {{baseUrl}}/prealerts/status/U
+Authorization: Bearer {{authToken}}
+
+### Get prealerts by status (confirmed)
+GET {{baseUrl}}/prealerts/status/C
+Authorization: Bearer {{authToken}}
+
+### Delete prealert
+DELETE {{baseUrl}}/prealerts/1
+Authorization: Bearer {{authToken}}

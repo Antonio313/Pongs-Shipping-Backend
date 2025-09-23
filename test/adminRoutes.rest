@@ -1,0 +1,49 @@
+### Admin Routes - Customers
+@baseUrl = http://localhost:3000/api
+@customerToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjMwLCJlbWFpbCI6InJldWVscmljaGFyZHNAZ21haWwuY29tIiwiaXNWZXJpZmllZCI6dHJ1ZSwiaWF0IjoxNzU2NTk1MTQ3LCJleHAiOjE3NTY1OTg3NDd9.1WsuEbtIz7HuYBxYW0TN4GZnOVTrJk_tC-L0ehJUhoI
+
+@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIxLCJlbWFpbCI6InJldWVscmljaGFyZHMyQGdtYWlsLmNvbSIsImlzVmVyaWZpZWQiOnRydWUsImlhdCI6MTc1NjU5NTA4NywiZXhwIjoxNzU2NTk4Njg3fQ.3ruBKxNLFvlFHNjNZRuixqx0TX9vudPa5FxqSQZP40Q
+
+
+### 1. Get All Customers - Success (Admin)
+GET {{baseUrl}}/admin/customers
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### 2. Get All Customers - Unauthorized (Non-Admin)
+GET {{baseUrl}}/admin/customers
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+### 3. Get All Customers - No Token
+GET {{baseUrl}}/admin/customers
+Content-Type: application/json
+
+### 4. Get All Customers - Invalid Token
+GET {{baseUrl}}/admin/customers
+Authorization: Bearer invalid_token_here
+Content-Type: application/json
+
+### 5. Get Specific Customer - Success (Admin)
+GET {{baseUrl}}/admin/customers/25
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### 6. Get Specific Customer - Customer Not Found
+GET {{baseUrl}}/admin/customers/87878
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### 7. Get Specific Customer - Unauthorized (Non-Admin)
+GET {{baseUrl}}/admin/customers/25
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+### 8. Get Specific Customer - Invalid Customer ID Format
+GET {{baseUrl}}/admin/customers/invalid-id
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+### 9. Get Specific Customer - No Token
+GET {{baseUrl}}/admin/customers/25
+Content-Type: application/json

@@ -1,0 +1,77 @@
+@baseUrl = http://localhost:3000/api
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjIxLCJlbWFpbCI6InJldWVscmljaGFyZHMyQGdtYWlsLmNvbSIsImlzVmVyaWZpZWQiOnRydWUsImlhdCI6MTc1NjYwMTM1MCwiZXhwIjoxNzU2NjA0OTUwfQ.MuIIKmB88T9BkYwsf4CaS9po8UyW_Z5_S9gmVgPefpE
+
+### Get all packages for current user
+GET {{baseUrl}}/packages/my-packages
+Authorization: Bearer {{authToken}}
+
+### Get all packages (admin only)
+GET {{baseUrl}}/packages
+Authorization: Bearer {{authToken}}
+
+### Get package by ID
+GET {{baseUrl}}/packages/PKG001
+Authorization: Bearer {{authToken}}
+
+### Get package by tracking number (public)
+GET {{baseUrl}}/packages/track/TRKABC123
+
+### Create new package (admin only)
+POST {{baseUrl}}/packages
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "user_id": 1,
+  "description": "Electronics package",
+  "weight": 5.5,
+  "length": 30.0,
+  "width": 20.0,
+  "height": 15.0,
+  "cost": 299.99,
+  "status": "processing"
+}
+
+### Confirm prealert and create package (admin only)
+POST {{baseUrl}}/packages/confirm-prealert/1
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "weight": 3.2,
+  "length": 25.0,
+  "width": 18.0,
+  "height": 12.0,
+  "cost": 250.00,
+  "status": "in transit"
+}
+
+### Update package (admin only)
+PUT {{baseUrl}}/packages/PKG123456
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "weight": 6.0,
+  "cost": 350.00,
+  "status": "out for delivery"
+}
+
+### Update package status (admin only)
+PATCH {{baseUrl}}/packages/PKG123456/status
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "status": "delivered",
+  "location": "Kingston, JM",
+  "notes": "Package delivered to recipient"
+}
+
+### Delete package (admin only)
+DELETE {{baseUrl}}/packages/PKG123456
+Authorization: Bearer {{authToken}}
+
+### Get packages by status
+GET {{baseUrl}}/packages/status/in%20transit
+Authorization: Bearer {{authToken}}

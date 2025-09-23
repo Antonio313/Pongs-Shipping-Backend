@@ -1,0 +1,125 @@
+### User Registration and Login Tests
+
+### Register User 1
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john.doe@example.com",
+  "password": "SecurePass123!",
+  "phone": "305-123-4567",
+  "branch": "Priory",
+  "role": "C"
+}
+
+### Register User 2
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "first_name": "Jane",
+  "last_name": "Smith",
+  "email": "jane.smith@example.com",
+  "password": "StrongPass456!",
+  "phone": "305-987-6543",
+  "branch": "Ocho Rios",
+  "role": "A"
+}
+
+
+
+
+
+### Login User 1
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "reuelrichards@gmail.com",
+  "password": "password"
+}
+
+### Login User 3
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "reuelrichards2@gmail.com",
+  "password": "password"
+}
+
+
+
+
+
+
+### Login User 2
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "jane.smith@example.com",
+  "password": "StrongPass456!"
+}
+
+
+
+### Failed Login Attempt user 1
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "john.doe@example.com",
+  "password": "wrongpassword"
+}
+
+
+### Failed Login Attempt user 2
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "nonexistent@example.com",
+  "password": "somepassword"
+}
+
+
+### Register User with Missing Fields
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "first_name": "Test",
+  "email": "test@example.com",
+  "password": "test123"
+}
+
+### Register User with weak password
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "first_name": "Test",
+  "last_name": "User",
+  "email": "test@example.com",
+  "password": "123",
+  "phone": "555-1234",
+  "branch": "TestBranch"
+}
+
+### Register User with invalid email
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+
+{
+  "first_name": "Test",
+  "last_name": "User",
+  "email": "invalid-email",
+  "password": "Password123!",
+  "phone": "555-1234",
+  "branch": "TestBranch"
+}
+// Invalid email format - should return error
+
