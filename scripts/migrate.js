@@ -29,15 +29,23 @@ async function runDatabaseRestore() {
     // Check if we need to restore the database
     let needsRestore = false;
     try {
-      const result = await pool.query("SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'public'");
-      const tableCount = parseInt(result.rows[0].count);
-      console.log(`📊 Found ${tableCount} existing tables`);
+      // Check for actual application tables, not just any tables
+      const result = await pool.query(`
+        SELECT COUNT(*) as count
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name IN ('users', 'packages', 'prealerts', 'deliveries')
+      `);
+      const appTableCount = parseInt(result.rows[0].count);
+      console.log(`📊 Found ${appTableCount} application tables`);
 
-      if (tableCount === 0) {
+      if (appTableCount === 0) {
         needsRestore = true;
-        console.log('🔄 Database appears empty, will restore from dump');
+        console.log('🔄 No application tables found, will restore from dump');
       } else {
-        console.log('📋 Database already has tables, skipping restore');
+        // Force restore anyway since the database seems incomplete
+        needsRestore = true;
+        console.log('🔄 Application tables exist but forcing restore to ensure completeness');
       }
     } catch (error) {
       console.log('🔄 Cannot check existing tables, will attempt restore');
@@ -114,59 +122,12 @@ async function runDatabaseRestore() {
       }
     }
 
-    // Create superuser
-    await createSuperuser();
-
     console.log('🎉 Database setup completed successfully!');
   } catch (error) {
     console.error('❌ Database setup failed:', error);
     process.exit(1);
   } finally {
     await pool.end();
-  }
-}
-
-async function createSuperuser() {
-  try {
-    console.log('👤 Creating/updating superuser...');
-
-    const superuserSQL = `
-      INSERT INTO users (
-        first_name,
-        last_name,
-        email,
-        password_hash,
-        phone,
-        address,
-        branch,
-        role,
-        is_verified,
-        created_at,
-        updated_at
-      ) VALUES (
-        'Admin',
-        'User',
-        'reuelrichards1@gmail.com',
-        '$2b$10$rQJ5YVmQxWtjhGKqF4K6qeH7mN8L4vN9F3gH8qR7M2cP1kS6wX5tO',
-        '+1-876-123-4567',
-        'System Administrator',
-        'Priory',
-        'A',
-        TRUE,
-        CURRENT_TIMESTAMP,
-        CURRENT_TIMESTAMP
-      ) ON CONFLICT (email) DO UPDATE SET
-        password_hash = EXCLUDED.password_hash,
-        role = EXCLUDED.role,
-        is_verified = EXCLUDED.is_verified,
-        updated_at = CURRENT_TIMESTAMP;
-    `;
-
-    await pool.query(superuserSQL);
-    console.log('✅ Superuser created/updated successfully!');
-  } catch (error) {
-    console.error('❌ Failed to create superuser:', error);
-    throw error;
   }
 }
 
