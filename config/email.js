@@ -2,15 +2,23 @@ const nodemailer = require('nodemailer');
 
 // Create transporter with better error handling
 const createTransporter = () => {
+  console.log('🔧 Email Configuration Debug:');
+  console.log('  SMTP_HOST:', process.env.SMTP_HOST);
+  console.log('  SMTP_PORT:', process.env.SMTP_PORT);
+  console.log('  SMTP_USER:', process.env.SMTP_USER);
+  console.log('  SMTP_PASS:', process.env.SMTP_PASS ? '[SET]' : '[NOT SET]');
+  console.log('  SMTP_FROM:', process.env.SMTP_FROM);
+
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.warn('SMTP credentials not found. Email functionality will be disabled.');
     return null;
   }
 
-  return nodemailer.createTransport({
+  console.log('✅ Creating email transporter...');
+  const config = {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: false,
+    secure: false, // true for 465, false for other ports
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -18,7 +26,18 @@ const createTransporter = () => {
     connectionTimeout: 30000, // 30 seconds
     greetingTimeout: 30000,   // 30 seconds
     socketTimeout: 30000,     // 30 seconds
+    debug: true, // Enable debug logs
+    logger: true // Enable logger
+  };
+
+  console.log('📧 Transporter config:', {
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    user: config.auth.user
   });
+
+  return nodemailer.createTransport(config);
 };
 
 const transporter = createTransporter();
@@ -748,12 +767,18 @@ const emailTemplates = {
 };
 
 const sendEmail = async (to, subject, html) => {
+  console.log('📤 Attempting to send email...');
+  console.log('  To:', to);
+  console.log('  Subject:', subject);
+
   try {
     // Check if transporter is available
     if (!transporter) {
-      console.warn('Email transporter not available. Email not sent to:', to);
+      console.warn('❌ Email transporter not available. Email not sent to:', to);
       return false;
     }
+
+    console.log('✅ Transporter available, preparing email...');
 
     const mailOptions = {
       from: process.env.SMTP_FROM || 'noreply@pongsshipping.com',
@@ -762,23 +787,57 @@ const sendEmail = async (to, subject, html) => {
       html
     };
 
-    // Add a timeout to prevent hanging
-    const emailPromise = transporter.sendMail(mailOptions);
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Email timeout after 30 seconds')), 30000)
-    );
+    console.log('📧 Mail options:', {
+      from: mailOptions.from,
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      htmlLength: html ? html.length : 0
+    });
 
-    const info = await Promise.race([emailPromise, timeoutPromise]);
-    console.log('Email sent successfully:', info.messageId);
+    // Test connection first
+    console.log('🔍 Testing SMTP connection...');
+    await transporter.verify();
+    console.log('✅ SMTP connection verified successfully');
+
+    // Send the email
+    console.log('🚀 Sending email...');
+    const info = await transporter.sendMail(mailOptions);
+
+    console.log('✅ Email sent successfully!');
+    console.log('  Message ID:', info.messageId);
+    console.log('  Response:', info.response);
+
     return true;
   } catch (error) {
-    console.error('Error sending email:', error.message || error);
+    console.error('❌ Error sending email:');
+    console.error('  Error type:', error.name);
+    console.error('  Error message:', error.message);
+    console.error('  Error code:', error.code);
+    console.error('  Full error:', error);
     return false;
   }
+};
+
+// Test email function for debugging
+const testEmail = async (to = 'test@example.com') => {
+  console.log('🧪 Testing email functionality...');
+
+  const testTemplate = {
+    subject: 'Test Email - Pongs Shipping',
+    html: `
+      <h2>Email Test</h2>
+      <p>This is a test email to verify SMTP configuration.</p>
+      <p>Time: ${new Date().toISOString()}</p>
+      <p>Environment: ${process.env.NODE_ENV}</p>
+    `
+  };
+
+  return await sendEmail(to, testTemplate.subject, testTemplate.html);
 };
 
 module.exports = {
   transporter,
   emailTemplates,
-  sendEmail
+  sendEmail,
+  testEmail
 };

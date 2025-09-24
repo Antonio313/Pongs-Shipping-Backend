@@ -40,6 +40,30 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ message: 'Server is running' });
 });
 
+// Email test endpoint (for debugging)
+app.get('/api/test-email', async (req, res) => {
+  try {
+    const { testEmail } = require('./config/email');
+    const testTo = req.query.email || 'reuelrichards1@gmail.com';
+
+    console.log('🧪 Testing email via API endpoint...');
+    const result = await testEmail(testTo);
+
+    res.status(200).json({
+      success: result,
+      message: result ? 'Test email sent successfully' : 'Test email failed',
+      sentTo: testTo
+    });
+  } catch (error) {
+    console.error('Email test endpoint error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Email test failed',
+      error: error.message
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
