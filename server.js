@@ -18,10 +18,50 @@ const app = express();
 
 // Middleware
 app.use(express.json());
+
+// Dynamic CORS configuration for Railway deployment flexibility
+const allowedOrigins = [
+  'http://localhost:5173', // Local development
+  'http://localhost:3000', // Local development alternative
+  'http://localhost:3001', // Local development alternative
+];
+
+// Add production origins
+if (process.env.NODE_ENV === 'production') {
+  // Add specific frontend URL if provided
+  if (process.env.FRONTEND_URL) {
+    allowedOrigins.push(process.env.FRONTEND_URL);
+  }
+  // Add Railway pattern URLs
+  allowedOrigins.push(/^https:\/\/.*\.up\.railway\.app$/);
+  allowedOrigins.push(/^https:\/\/.*\.railway\.app$/);
+}
+
+console.log('🔧 CORS Configuration:');
+console.log('  Allowed origins:', allowedOrigins);
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production'
-    ? 'https://pongs-shipping-frontend-production.up.railway.app'
-    : 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, etc.)
+    if (!origin) return callback(null, true);
+
+    // Check if origin matches allowed patterns
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (typeof allowedOrigin === 'string') {
+        return origin === allowedOrigin;
+      } else if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return false;
+    });
+
+    if (isAllowed) {
+      return callback(null, true);
+    } else {
+      console.warn(`❌ CORS blocked origin: ${origin}`);
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true
 }));
 

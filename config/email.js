@@ -1,6 +1,10 @@
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
 
+// Cache for the transporter to avoid recreating it
+let transporterCache = null;
+let transporterPromise = null;
+
 // Gmail OAuth2 setup for production
 const createGmailOAuth2 = async () => {
   if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET || !process.env.GMAIL_REFRESH_TOKEN) {
@@ -100,7 +104,30 @@ const createTransporter = async () => {
   return nodemailer.createTransport(config);
 };
 
-const transporter = createTransporter();
+// Get or create transporter with caching
+const getTransporter = async () => {
+  // If we already have a cached transporter, return it
+  if (transporterCache) {
+    return transporterCache;
+  }
+
+  // If we're already creating a transporter, wait for it
+  if (transporterPromise) {
+    return await transporterPromise;
+  }
+
+  // Create new transporter
+  transporterPromise = createTransporter();
+
+  try {
+    transporterCache = await transporterPromise;
+    transporterPromise = null;
+    return transporterCache;
+  } catch (error) {
+    transporterPromise = null;
+    throw error;
+  }
+};
 
 // Email templates
 const emailTemplates = {
@@ -114,70 +141,70 @@ const emailTemplates = {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-          body { 
-            font-family: 'Inter', Arial, sans-serif; 
-            line-height: 1.6; 
-            color: #1f2a44; 
-            margin: 0; 
-            padding: 0; 
+          body {
+            font-family: 'Inter', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1f2a44;
+            margin: 0;
+            padding: 0;
             background-color: #f3f4f6;
           }
-          .container { 
-            max-width: 600px; 
-            margin: 20px auto; 
-            background: #ffffff; 
-            border-radius: 8px; 
-            overflow: hidden; 
+          .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           }
-          .header { 
-            background: #2563eb; 
-            color: #ffffff; 
-            padding: 24px; 
-            text-align: center; 
+          .header {
+            background: #2563eb;
+            color: #ffffff;
+            padding: 24px;
+            text-align: center;
           }
-          .header h1 { 
-            margin: 0; 
-            font-size: 24px; 
-            font-weight: 600; 
+          .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
           }
-          .content { 
-            padding: 32px; 
+          .content {
+            padding: 32px;
           }
-          .content h2 { 
-            font-size: 20px; 
-            font-weight: 600; 
-            color: #1f2a44; 
-            margin-top: 0; 
+          .content h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2a44;
+            margin-top: 0;
           }
-          .content p { 
-            font-size: 16px; 
-            margin: 12px 0; 
+          .content p {
+            font-size: 16px;
+            margin: 12px 0;
           }
-          .button { 
-            display: inline-block; 
-            padding: 12px 24px; 
-            background: #2563eb; 
-            color: #ffffff; 
-            text-decoration: none; 
-            border-radius: 6px; 
-            font-weight: 500; 
-            transition: background 0.3s ease; 
+          .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #2563eb;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.3s ease;
           }
-          .button:hover { 
-            background: #1d4ed8; 
+          .button:hover {
+            background: #1d4ed8;
           }
-          .link-text { 
-            font-size: 14px; 
-            color: #4b5563; 
-            word-break: break-all; 
+          .link-text {
+            font-size: 14px;
+            color: #4b5563;
+            word-break: break-all;
           }
-          .footer { 
-            background: #f3f4f6; 
-            padding: 20px; 
-            text-align: center; 
-            font-size: 12px; 
-            color: #6b7280; 
+          .footer {
+            background: #f3f4f6;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
           }
           .hyperlink {
           color: #ffffffff;
@@ -226,68 +253,68 @@ const emailTemplates = {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-          body { 
-            font-family: 'Inter', Arial, sans-serif; 
-            line-height: 1.6; 
-            color: #1f2a44; 
-            margin: 0; 
-            padding: 0; 
+          body {
+            font-family: 'Inter', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1f2a44;
+            margin: 0;
+            padding: 0;
             background-color: #f3f4f6;
           }
-          .container { 
-            max-width: 600px; 
-            margin: 20px auto; 
-            background: #ffffff; 
-            border-radius: 8px; 
-            overflow: hidden; 
+          .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           }
-          .header { 
-            background: #2563eb; 
-            color: #ffffff; 
-            padding: 24px; 
-            text-align: center; 
+          .header {
+            background: #2563eb;
+            color: #ffffff;
+            padding: 24px;
+            text-align: center;
           }
-          .header h1 { 
-            margin: 0; 
-            font-size: 24px; 
-            font-weight: 600; 
+          .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
           }
-          .content { 
-            padding: 32px; 
+          .content {
+            padding: 32px;
           }
-          .content h2 { 
-            font-size: 20px; 
-            font-weight: 600; 
-            color: #1f2a44; 
-            margin-top: 0; 
+          .content h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2a44;
+            margin-top: 0;
           }
-          .content p { 
-            font-size: 16px; 
-            margin: 12px 0; 
+          .content p {
+            font-size: 16px;
+            margin: 12px 0;
           }
-          .status-badge { 
-            display: inline-block; 
-            padding: 8px 16px; 
-            background: #059669; 
-            color: #ffffff; 
-            border-radius: 20px; 
-            font-weight: 500; 
-            font-size: 14px; 
+          .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #059669;
+            color: #ffffff;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 14px;
           }
-          .details-box { 
-            background: #f0f9ff; 
-            padding: 20px; 
-            border-radius: 8px; 
-            margin: 20px 0; 
-            border-left: 4px solid #2563eb; 
+          .details-box {
+            background: #f0f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #2563eb;
           }
-          .footer { 
-            background: #f3f4f6; 
-            padding: 20px; 
-            text-align: center; 
-            font-size: 12px; 
-            color: #6b7280; 
+          .footer {
+            background: #f3f4f6;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
           }
           @media (max-width: 600px) {
             .container { margin: 10px; padding: 10px; }
@@ -306,13 +333,13 @@ const emailTemplates = {
             <h2>Package Status Update</h2>
             <p>Hello ${userName},</p>
             <p>Your package <strong>${packageDescription}</strong> has a new status update.</p>
-            
+
             <div class="details-box">
               <h3 style="margin-top: 0; color: #2563eb;">Package Details</h3>
               <p><strong>Tracking Number:</strong> ${trackingNumber}</p>
               <p><strong>Status:</strong> <span class="status-badge">${status}</span></p>
             </div>
-            
+
             <p>Track your package anytime through your customer dashboard.</p>
           </div>
           <div class="footer">
@@ -334,86 +361,86 @@ const emailTemplates = {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-          body { 
-            font-family: 'Inter', Arial, sans-serif; 
-            line-height: 1.6; 
-            color: #1f2a44; 
-            margin: 0; 
-            padding: 0; 
+          body {
+            font-family: 'Inter', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1f2a44;
+            margin: 0;
+            padding: 0;
             background-color: #f3f4f6;
           }
-          .container { 
-            max-width: 600px; 
-            margin: 20px auto; 
-            background: #ffffff; 
-            border-radius: 8px; 
-            overflow: hidden; 
+          .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           }
-          .header { 
-            background: #059669; 
-            color: #ffffff; 
-            padding: 24px; 
-            text-align: center; 
+          .header {
+            background: #059669;
+            color: #ffffff;
+            padding: 24px;
+            text-align: center;
           }
-          .header h1 { 
-            margin: 0; 
-            font-size: 24px; 
-            font-weight: 600; 
+          .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
           }
-          .content { 
-            padding: 32px; 
+          .content {
+            padding: 32px;
           }
-          .content h2 { 
-            font-size: 20px; 
-            font-weight: 600; 
-            color: #1f2a44; 
-            margin-top: 0; 
+          .content h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2a44;
+            margin-top: 0;
           }
-          .content p { 
-            font-size: 16px; 
-            margin: 12px 0; 
+          .content p {
+            font-size: 16px;
+            margin: 12px 0;
           }
-          .status-badge { 
-            display: inline-block; 
-            padding: 8px 16px; 
-            background: #059669; 
-            color: #ffffff; 
-            border-radius: 20px; 
-            font-weight: 500; 
-            font-size: 14px; 
+          .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #059669;
+            color: #ffffff;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 14px;
           }
-          .tracking-number { 
-            font-size: 18px; 
-            font-weight: 600; 
-            color: #2563eb; 
-            background: #f0f9ff; 
-            padding: 12px; 
-            border-radius: 6px; 
-            text-align: center; 
-            margin: 16px 0; 
+          .tracking-number {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2563eb;
+            background: #f0f9ff;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+            margin: 16px 0;
           }
-          .details-box { 
-            background: #f0f9ff; 
-            padding: 20px; 
-            border-radius: 8px; 
-            margin: 20px 0; 
-            border-left: 4px solid #059669; 
+          .details-box {
+            background: #f0f9ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #059669;
           }
-          .content ul { 
-            padding-left: 20px; 
-            margin: 16px 0; 
+          .content ul {
+            padding-left: 20px;
+            margin: 16px 0;
           }
-          .content ul li { 
-            margin-bottom: 8px; 
-            font-size: 16px; 
+          .content ul li {
+            margin-bottom: 8px;
+            font-size: 16px;
           }
-          .footer { 
-            background: #f3f4f6; 
-            padding: 20px; 
-            text-align: center; 
-            font-size: 12px; 
-            color: #6b7280; 
+          .footer {
+            background: #f3f4f6;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
           }
           @media (max-width: 600px) {
             .container { margin: 10px; padding: 10px; }
@@ -432,14 +459,14 @@ const emailTemplates = {
           <div class="content">
             <h2>Great News, ${userName}!</h2>
             <p>Your pre-alert has been confirmed, and we've created a package for your shipment.</p>
-            
+
             <div class="details-box">
               <h3 style="margin-top: 0; color: #059669;">Package Details</h3>
               <p><strong>Description:</strong> ${packageDescription}</p>
               <div class="tracking-number">Tracking Number: ${trackingNumber}</div>
               <p><strong>Current Status:</strong> <span class="status-badge">${status}</span></p>
             </div>
-            
+
             <p><strong>What's Next?</strong></p>
             <ul>
               <li>Your package is now in our system and being processed.</li>
@@ -447,9 +474,9 @@ const emailTemplates = {
               <li>Track your package anytime using your tracking number.</li>
               <li>Log into your customer dashboard for detailed tracking information.</li>
             </ul>
-            
+
             <p><strong>Stay Updated:</strong> We'll notify you at each major step of your package's journey.</p>
-            
+
             <p>Thank you for choosing Pongs Shipping Company!</p>
           </div>
           <div class="footer">
@@ -472,112 +499,112 @@ const emailTemplates = {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-          body { 
-            font-family: 'Inter', Arial, sans-serif; 
-            line-height: 1.6; 
-            color: #1f2a44; 
-            margin: 0; 
-            padding: 0; 
+          body {
+            font-family: 'Inter', Arial, sans-serif;
+            line-height: 1.6;
+            color: #1f2a44;
+            margin: 0;
+            padding: 0;
             background-color: #f3f4f6;
           }
-          .container { 
-            max-width: 600px; 
-            margin: 20px auto; 
-            background: #ffffff; 
-            border-radius: 8px; 
-            overflow: hidden; 
+          .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           }
-          .header { 
-            background: #dc2626; 
-            color: #ffffff; 
-            padding: 24px; 
-            text-align: center; 
+          .header {
+            background: #dc2626;
+            color: #ffffff;
+            padding: 24px;
+            text-align: center;
           }
-          .header h1 { 
-            margin: 0; 
-            font-size: 24px; 
-            font-weight: 600; 
+          .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 600;
           }
-          .content { 
-            padding: 32px; 
+          .content {
+            padding: 32px;
           }
-          .content h2 { 
-            font-size: 20px; 
-            font-weight: 600; 
-            color: #1f2a44; 
-            margin-top: 0; 
+          .content h2 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2a44;
+            margin-top: 0;
           }
-          .content h3 { 
-            font-size: 18px; 
-            font-weight: 600; 
-            color: #dc2626; 
-            margin-top: 20px; 
+          .content h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #dc2626;
+            margin-top: 20px;
           }
-          .content p { 
-            font-size: 16px; 
-            margin: 12px 0; 
+          .content p {
+            font-size: 16px;
+            margin: 12px 0;
           }
-          .urgent-badge { 
-            display: inline-block; 
-            padding: 8px 16px; 
-            background: #dc2626; 
-            color: #ffffff; 
-            border-radius: 20px; 
-            font-weight: 600; 
-            font-size: 14px; 
-            margin-bottom: 16px; 
+          .urgent-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #dc2626;
+            color: #ffffff;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 16px;
           }
-          .package-details { 
-            background: #fef2f2; 
-            padding: 20px; 
-            border-radius: 8px; 
-            margin: 20px 0; 
-            border-left: 4px solid #dc2626; 
+          .package-details {
+            background: #fef2f2;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #dc2626;
           }
-          .warning-box { 
-            background: #fef2f2; 
-            padding: 16px; 
-            border-radius: 6px; 
-            border: 1px solid #dc2626; 
-            margin: 16px 0; 
+          .warning-box {
+            background: #fef2f2;
+            padding: 16px;
+            border-radius: 6px;
+            border: 1px solid #dc2626;
+            margin: 16px 0;
           }
-          .cta-button { 
-            display: inline-block; 
-            padding: 12px 24px; 
-            background: #dc2626; 
-            color: #ffffff; 
-            text-decoration: none; 
-            border-radius: 6px; 
-            font-weight: 600; 
-            font-size: 16px; 
-            transition: background 0.3s ease; 
+          .cta-button {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #dc2626;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 16px;
+            transition: background 0.3s ease;
           }
-          .cta-button:hover { 
-            background: #b91c1c; 
+          .cta-button:hover {
+            background: #b91c1c;
           }
-          .content ol { 
-            padding-left: 20px; 
-            margin: 16px 0; 
+          .content ol {
+            padding-left: 20px;
+            margin: 16px 0;
           }
-          .content ol li { 
-            margin-bottom: 8px; 
-            font-size: 16px; 
+          .content ol li {
+            margin-bottom: 8px;
+            font-size: 16px;
           }
-          .content ul { 
-            padding-left: 20px; 
-            margin: 12px 0; 
+          .content ul {
+            padding-left: 20px;
+            margin: 12px 0;
           }
-          .content ul li { 
-            margin-bottom: 8px; 
-            font-size: 14px; 
+          .content ul li {
+            margin-bottom: 8px;
+            font-size: 14px;
           }
-          .footer { 
-            background: #f3f4f6; 
-            padding: 20px; 
-            text-align: center; 
-            font-size: 12px; 
-            color: #6b7280; 
+          .footer {
+            background: #f3f4f6;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
           }
           @media (max-width: 600px) {
             .container { margin: 10px; padding: 10px; }
@@ -596,10 +623,10 @@ const emailTemplates = {
           </div>
           <div class="content">
             <div class="urgent-badge">IMMEDIATE ATTENTION NEEDED</div>
-            
+
             <h2>Hello ${userName},</h2>
             <p>We have received a package at our Florida warehouse, but <strong>no pre-alert</strong> was submitted in our system.</p>
-            
+
             <div class="package-details">
               <h3 style="margin-top: 0;">Package Details</h3>
               <p><strong>Description:</strong> ${packageDetails.description}</p>
@@ -611,7 +638,7 @@ const emailTemplates = {
 
             <h3>⚠️ Package Held at Customs</h3>
             <p>Your package cannot proceed until you take the following actions:</p>
-            
+
             <ol>
               <li><strong>Immediately</strong> create a pre-alert in our system.</li>
               <li>Upload the purchase receipt/invoice.</li>
@@ -832,7 +859,9 @@ const sendEmail = async (to, subject, html) => {
   console.log('  Subject:', subject);
 
   try {
-    // Check if transporter is available
+    // Get transporter (with caching)
+    const transporter = await getTransporter();
+
     if (!transporter) {
       console.warn('❌ Email transporter not available. Email not sent to:', to);
       return false;
@@ -854,14 +883,28 @@ const sendEmail = async (to, subject, html) => {
       htmlLength: html ? html.length : 0
     });
 
-    // Test connection first
+    // Test connection first (with timeout)
     console.log('🔍 Testing SMTP connection...');
-    await transporter.verify();
-    console.log('✅ SMTP connection verified successfully');
+    const verifyPromise = transporter.verify();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('SMTP verification timeout')), 10000)
+    );
 
-    // Send the email
+    try {
+      await Promise.race([verifyPromise, timeoutPromise]);
+      console.log('✅ SMTP connection verified successfully');
+    } catch (verifyError) {
+      console.warn('⚠️ SMTP verification failed, but continuing with send attempt:', verifyError.message);
+    }
+
+    // Send the email (with timeout)
     console.log('🚀 Sending email...');
-    const info = await transporter.sendMail(mailOptions);
+    const sendPromise = transporter.sendMail(mailOptions);
+    const sendTimeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Email send timeout')), 30000)
+    );
+
+    const info = await Promise.race([sendPromise, sendTimeoutPromise]);
 
     console.log('✅ Email sent successfully!');
     console.log('  Message ID:', info.messageId);
@@ -887,6 +930,13 @@ const sendEmail = async (to, subject, html) => {
     console.error('  Error message:', error.message);
     console.error('  Error code:', error.code);
     console.error('  Full error:', error);
+
+    // Clear the cache if there's a connection error
+    if (error.message.includes('connect') || error.message.includes('timeout')) {
+      console.log('🔄 Clearing transporter cache due to connection error');
+      transporterCache = null;
+    }
+
     return false;
   }
 };
@@ -909,7 +959,6 @@ const testEmail = async (to = 'test@example.com') => {
 };
 
 module.exports = {
-  transporter,
   emailTemplates,
   sendEmail,
   testEmail

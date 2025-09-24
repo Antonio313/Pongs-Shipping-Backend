@@ -5,33 +5,54 @@ const path = require('path');
 
 class S3Service {
   constructor() {
-    // Validate required environment variables
-    if (!process.env.AWS_ACCESS_KEY_ID) {
-      throw new Error('AWS_ACCESS_KEY_ID environment variable is required');
-    }
-    if (!process.env.AWS_SECRET_ACCESS_KEY) {
-      throw new Error('AWS_SECRET_ACCESS_KEY environment variable is required');
-    }
-    if (!process.env.AWS_REGION) {
-      throw new Error('AWS_REGION environment variable is required');
-    }
-    if (!process.env.AWS_S3_BUCKET_NAME) {
-      throw new Error('AWS_S3_BUCKET_NAME environment variable is required');
+    // Check if AWS credentials are available
+    this.isAvailable = !!(
+      process.env.AWS_ACCESS_KEY_ID &&
+      process.env.AWS_SECRET_ACCESS_KEY &&
+      process.env.AWS_REGION &&
+      process.env.AWS_S3_BUCKET_NAME
+    );
+
+    if (!this.isAvailable) {
+      console.warn('⚠️ S3Service: AWS credentials not fully configured. File upload functionality will be disabled.');
+      console.warn('   Missing variables:', {
+        AWS_ACCESS_KEY_ID: !process.env.AWS_ACCESS_KEY_ID,
+        AWS_SECRET_ACCESS_KEY: !process.env.AWS_SECRET_ACCESS_KEY,
+        AWS_REGION: !process.env.AWS_REGION,
+        AWS_S3_BUCKET_NAME: !process.env.AWS_S3_BUCKET_NAME,
+      });
+      this.s3Client = null;
+      this.bucketName = null;
+      return;
     }
 
-    this.s3Client = new S3Client({
-      region: process.env.AWS_REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      },
-      endpoint: process.env.AWS_S3_ENDPOINT || undefined, // For custom endpoints like LocalStack
-    });
+    try {
+      this.s3Client = new S3Client({
+        region: process.env.AWS_REGION,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        },
+        endpoint: process.env.AWS_S3_ENDPOINT || undefined, // For custom endpoints like LocalStack
+      });
 
-    this.bucketName = process.env.AWS_S3_BUCKET_NAME;
+      this.bucketName = process.env.AWS_S3_BUCKET_NAME;
 
-    // Log successful initialization
-    console.log(`✅ S3Service initialized for bucket: ${this.bucketName} in region: ${process.env.AWS_REGION}`);
+      // Log successful initialization
+      console.log(`✅ S3Service initialized for bucket: ${this.bucketName} in region: ${process.env.AWS_REGION}`);
+    } catch (error) {
+      console.error('❌ Failed to initialize S3Service:', error.message);
+      this.isAvailable = false;
+      this.s3Client = null;
+      this.bucketName = null;
+    }
+  }
+
+  // Check if S3 service is available
+  checkAvailability() {
+    if (!this.isAvailable) {
+      throw new Error('S3Service is not available. Please check AWS configuration.');
+    }
   }
 
   /**
@@ -43,6 +64,7 @@ class S3Service {
    * @returns {Promise<object>} - Upload result with key and URL
    */
   async uploadFile(fileBuffer, fileName, contentType, folder = 'receipts') {
+    this.checkAvailability();
     try {
       // Generate unique filename
       const fileExtension = path.extname(fileName);
@@ -85,6 +107,7 @@ class S3Service {
    * @returns {Promise<string>} - Presigned URL
    */
   async getPresignedUrl(s3Key, expiresIn = 3600) {
+    this.checkAvailability();
     try {
       const command = new GetObjectCommand({
         Bucket: this.bucketName,
@@ -108,6 +131,7 @@ class S3Service {
    * @returns {Promise<boolean>} - Success status
    */
   async deleteFile(s3Key) {
+    this.checkAvailability();
     try {
       const command = new DeleteObjectCommand({
         Bucket: this.bucketName,
@@ -128,6 +152,7 @@ class S3Service {
    * @returns {Promise<boolean>} - Whether file exists
    */
   async fileExists(s3Key) {
+    this.checkAvailability();
     try {
       const command = new HeadObjectCommand({
         Bucket: this.bucketName,
@@ -150,6 +175,7 @@ class S3Service {
    * @returns {Promise<object>} - File metadata
    */
   async getFileMetadata(s3Key) {
+    this.checkAvailability();
     try {
       const command = new HeadObjectCommand({
         Bucket: this.bucketName,
