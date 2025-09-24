@@ -1,15 +1,27 @@
 const nodemailer = require('nodemailer');
 
-// Create transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: process.env.SMTP_PORT || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+// Create transporter with better error handling
+const createTransporter = () => {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.warn('SMTP credentials not found. Email functionality will be disabled.');
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT) || 587,
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    connectionTimeout: 30000, // 30 seconds
+    greetingTimeout: 30000,   // 30 seconds
+    socketTimeout: 30000,     // 30 seconds
+  });
+};
+
+const transporter = createTransporter();
 
 // Email templates
 const emailTemplates = {
@@ -737,6 +749,12 @@ const emailTemplates = {
 
 const sendEmail = async (to, subject, html) => {
   try {
+    // Check if transporter is available
+    if (!transporter) {
+      console.warn('Email transporter not available. Email not sent to:', to);
+      return false;
+    }
+
     const mailOptions = {
       from: process.env.SMTP_FROM || 'noreply@pongsshipping.com',
       to,
@@ -744,11 +762,17 @@ const sendEmail = async (to, subject, html) => {
       html
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent:', info.messageId);
+    // Add a timeout to prevent hanging
+    const emailPromise = transporter.sendMail(mailOptions);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Email timeout after 30 seconds')), 30000)
+    );
+
+    const info = await Promise.race([emailPromise, timeoutPromise]);
+    console.log('Email sent successfully:', info.messageId);
     return true;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Error sending email:', error.message || error);
     return false;
   }
 };
