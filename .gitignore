@@ -121,8 +121,11 @@ dist
 *.db-shm
 
 # Database dumps
-*.sql
+# *.sql  # Commented out to allow migration files and dump
 *.dump
+# Allow migration files and database dump
+!migrations/*.sql
+!pongs-shipping-dump.sql
 
 # PostgreSQL
 *.pgsql
