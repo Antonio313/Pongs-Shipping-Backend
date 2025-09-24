@@ -1,40 +1,34 @@
-# Use official Node.js runtime as base image
-FROM node:18-alpine
+# Use Node 20 for Vite compatibility
+FROM node:20-alpine
 
-# Install PostgreSQL client tools
-RUN apk add --no-cache postgresql-client
+# Install curl for health checks and PostgreSQL client for database operations
+RUN apk add --no-cache curl postgresql-client
 
-# Set working directory in container
 WORKDIR /app
 
-# Copy package.json and package-lock.json (if available)
+# Copy package files first for better caching
 COPY package*.json ./
 
 # Install dependencies
-# Use npm install if package-lock.json doesn't exist, otherwise use npm ci
-RUN if [ -f package-lock.json ]; then \
-      npm ci --omit=dev; \
-    else \
-      npm install --production; \
-    fi
+RUN npm ci --only=production
 
 # Copy application code
 COPY . .
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
-# Change ownership of the app directory
+# Set ownership
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 
-# Expose the port the app runs on
+# Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "const http = require('http'); http.get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
+# Simple health check using curl
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
 
 # Start the application
 CMD ["npm", "start"]
