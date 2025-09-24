@@ -15,26 +15,50 @@ const createTransporter = () => {
   }
 
   console.log('✅ Creating email transporter...');
-  const config = {
-    service: 'gmail', // Use Gmail service
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT) || 587,
-    secure: false, // true for 465, false for other ports
-    requireTLS: true, // Require TLS
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    connectionTimeout: 30000, // 30 seconds
-    greetingTimeout: 30000,   // 30 seconds
-    socketTimeout: 30000,     // 30 seconds
-    debug: true, // Enable debug logs
-    logger: true, // Enable logger
-    tls: {
-      ciphers: 'SSLv3', // Add TLS cipher
-      rejectUnauthorized: false // Allow self-signed certificates (for debugging)
-    }
-  };
+
+  // Try different configurations based on environment
+  let config;
+
+  // Check if we should use SendGrid (more Railway-friendly)
+  if (process.env.SENDGRID_API_KEY) {
+    console.log('📧 Using SendGrid configuration...');
+    config = {
+      host: 'smtp.sendgrid.net',
+      port: 587,
+      secure: false,
+      auth: {
+        user: 'apikey',
+        pass: process.env.SENDGRID_API_KEY,
+      },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+    };
+  } else {
+    console.log('📧 Using Gmail configuration with alternative ports...');
+
+    // Try Gmail with alternative configurations that work better on Railway
+    const useSecurePort = process.env.USE_SECURE_SMTP === 'true';
+
+    config = {
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: useSecurePort ? 465 : 587,
+      secure: useSecurePort, // true for 465, false for 587
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      connectionTimeout: 10000, // Reduce timeout
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+      // Try different TLS options for Railway compatibility
+      tls: {
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false,
+        secureProtocol: 'TLSv1_2_method'
+      }
+    };
+  }
 
   console.log('📧 Transporter config:', {
     host: config.host,
@@ -43,7 +67,18 @@ const createTransporter = () => {
     user: config.auth.user
   });
 
-  return nodemailer.createTransport(config);
+  const transporter = nodemailer.createTransport(config);
+
+  // Test the connection immediately
+  transporter.verify((error, success) => {
+    if (error) {
+      console.error('❌ SMTP connection verification failed:', error.message);
+    } else {
+      console.log('✅ SMTP server is ready to take our messages');
+    }
+  });
+
+  return transporter;
 };
 
 const transporter = createTransporter();
