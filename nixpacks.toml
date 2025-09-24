@@ -1,0 +1,17 @@
+[build]
+providers = ["node"]
+
+[build.providers.node]
+version = "18"
+
+[build.env]
+NODE_ENV = "production"
+
+[build.install]
+cmd = "npm ci"
+
+[build.build]
+cmd = "npm run build"
+
+[start]
+cmd = "npm start"
