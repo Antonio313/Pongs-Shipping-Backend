@@ -16,9 +16,11 @@ const createTransporter = () => {
 
   console.log('✅ Creating email transporter...');
   const config = {
+    service: 'gmail', // Use Gmail service
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT) || 587,
     secure: false, // true for 465, false for other ports
+    requireTLS: true, // Require TLS
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -27,7 +29,11 @@ const createTransporter = () => {
     greetingTimeout: 30000,   // 30 seconds
     socketTimeout: 30000,     // 30 seconds
     debug: true, // Enable debug logs
-    logger: true // Enable logger
+    logger: true, // Enable logger
+    tls: {
+      ciphers: 'SSLv3', // Add TLS cipher
+      rejectUnauthorized: false // Allow self-signed certificates (for debugging)
+    }
   };
 
   console.log('📧 Transporter config:', {
