@@ -278,10 +278,6 @@ We welcome contributions! Please follow these steps:
 - Update documentation as needed
 - Ensure all tests pass before submitting PR
 
-## 📄 License
-
-This project is licensed under the **ISC License** - see the [LICENSE](LICENSE) file for details.
-
 ## 🆘 Support
 
 If you encounter any issues or have questions:
@@ -289,7 +285,7 @@ If you encounter any issues or have questions:
 1. **Check the documentation** above
 2. **Search existing issues** in the GitHub repository
 3. **Create a new issue** with detailed information
-4. **Contact support** at support@pongsshipping.com
+4. **Contact support** at reuelrichards1@gmail.com
 
 ## 🙏 Acknowledgments
 
@@ -303,8 +299,8 @@ If you encounter any issues or have questions:
 
 <div align="center">
 
-**Built with ❤️ by the Pongs Shipping Company Team**
+**Built with ❤️ by Reuel's Web Services**
 
-[Website](https://pongsshipping.com) • [Documentation](https://docs.pongsshipping.com) • [Support](mailto:support@pongsshipping.com)
+[Website](https://reufolio.com) • [Support](mailto:reuelrichards1@gmail.com)
 
 </div>
