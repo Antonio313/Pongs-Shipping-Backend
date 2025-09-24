@@ -1,15 +1,11 @@
-const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
 // Load environment variables
 require('dotenv').config();
 
-// Database configuration using Railway's DATABASE_URL
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-});
+// Use the same database configuration as the main application
+const pool = require('../config/database');
 
 async function runDatabaseSetup() {
   try {

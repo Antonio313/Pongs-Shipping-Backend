@@ -1,84 +1,103 @@
 const nodemailer = require('nodemailer');
+const { google } = require('googleapis');
 
-// Create transporter with better error handling
-const createTransporter = () => {
+// Gmail OAuth2 setup for production
+const createGmailOAuth2 = async () => {
+  if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET || !process.env.GMAIL_REFRESH_TOKEN) {
+    return null;
+  }
+
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GMAIL_CLIENT_ID,
+    process.env.GMAIL_CLIENT_SECRET,
+    'https://developers.google.com/oauthplayground'
+  );
+
+  oauth2Client.setCredentials({
+    refresh_token: process.env.GMAIL_REFRESH_TOKEN
+  });
+
+  try {
+    const accessToken = await oauth2Client.getAccessToken();
+    return accessToken.token;
+  } catch (error) {
+    console.error('Failed to get OAuth2 access token:', error);
+    return null;
+  }
+};
+
+// Environment-aware transporter creation
+const createTransporter = async () => {
   console.log('🔧 Email Configuration Debug:');
-  console.log('  SMTP_HOST:', process.env.SMTP_HOST);
-  console.log('  SMTP_PORT:', process.env.SMTP_PORT);
+  console.log('  Environment:', process.env.NODE_ENV);
   console.log('  SMTP_USER:', process.env.SMTP_USER);
   console.log('  SMTP_PASS:', process.env.SMTP_PASS ? '[SET]' : '[NOT SET]');
-  console.log('  SMTP_FROM:', process.env.SMTP_FROM);
 
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.warn('SMTP credentials not found. Email functionality will be disabled.');
     return null;
   }
 
-  console.log('✅ Creating email transporter...');
+  // For local development, use simple Gmail SMTP
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🏠 Using local Gmail SMTP configuration...');
 
-  // Try different configurations based on environment
-  let config;
-
-  // Check if we should use SendGrid (more Railway-friendly)
-  if (process.env.SENDGRID_API_KEY) {
-    console.log('📧 Using SendGrid configuration...');
-    config = {
-      host: 'smtp.sendgrid.net',
-      port: 587,
-      secure: false,
-      auth: {
-        user: 'apikey',
-        pass: process.env.SENDGRID_API_KEY,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-    };
-  } else {
-    console.log('📧 Using Gmail configuration with alternative ports...');
-
-    // Try Gmail with alternative configurations that work better on Railway
-    const useSecurePort = process.env.USE_SECURE_SMTP === 'true';
-
-    config = {
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: useSecurePort ? 465 : 587,
-      secure: useSecurePort, // true for 465, false for 587
+    const config = {
+      service: 'gmail',
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
-      connectionTimeout: 10000, // Reduce timeout
-      greetingTimeout: 10000,
-      socketTimeout: 10000,
-      // Try different TLS options for Railway compatibility
-      tls: {
-        ciphers: 'SSLv3',
-        rejectUnauthorized: false,
-        secureProtocol: 'TLSv1_2_method'
-      }
     };
+
+    return nodemailer.createTransporter(config);
   }
 
-  console.log('📧 Transporter config:', {
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    user: config.auth.user
-  });
+  // For production, try OAuth2 first, then fallback to app password
+  console.log('☁️ Using production email configuration...');
 
-  const transporter = nodemailer.createTransport(config);
+  // Try OAuth2 Gmail first
+  try {
+    const accessToken = await createGmailOAuth2();
 
-  // Test the connection immediately
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error('❌ SMTP connection verification failed:', error.message);
-    } else {
-      console.log('✅ SMTP server is ready to take our messages');
+    if (accessToken) {
+      console.log('✅ Using Gmail OAuth2 configuration...');
+
+      const config = {
+        service: 'gmail',
+        auth: {
+          type: 'OAuth2',
+          user: process.env.SMTP_USER,
+          clientId: process.env.GMAIL_CLIENT_ID,
+          clientSecret: process.env.GMAIL_CLIENT_SECRET,
+          refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+          accessToken: accessToken,
+        },
+      };
+
+      return nodemailer.createTransporter(config);
     }
-  });
+  } catch (error) {
+    console.warn('OAuth2 setup failed, falling back to app password:', error.message);
+  }
 
-  return transporter;
+  // Fallback to app password with different strategy
+  console.log('📧 Falling back to Gmail app password...');
+
+  const config = {
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  };
+
+  return nodemailer.createTransporter(config);
 };
 
 const transporter = createTransporter();
