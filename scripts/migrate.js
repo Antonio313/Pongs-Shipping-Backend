@@ -55,56 +55,55 @@ async function runDatabaseRestore() {
     if (needsRestore) {
       console.log('⏳ Restoring database from dump file...');
 
-      // Prepare pg_restore command
-      const pgRestoreArgs = [
-        '--verbose',
-        '--clean',
-        '--no-acl',
-        '--no-owner',
+      // Try psql first since the dump appears to be in SQL format
+      const psqlArgs = [
         '--host', dbConfig.host,
         '--port', dbConfig.port.toString(),
         '--username', dbConfig.user,
         '--dbname', dbConfig.database,
-        dumpFilePath
+        '--file', dumpFilePath,
+        '--echo-errors',
+        '--on-error-stop'
       ];
 
-      // Set up environment for pg_restore
+      // Set up environment for psql
       const env = {
         ...process.env,
         PGPASSWORD: dbConfig.password
       };
 
-      // Execute pg_restore
-      const pgRestore = spawn('pg_restore', pgRestoreArgs, { env });
+      console.log('📝 Attempting restore with psql...');
+
+      // Execute psql
+      const psqlProcess = spawn('psql', psqlArgs, { env });
 
       let restoreOutput = '';
       let restoreError = '';
 
-      pgRestore.stdout.on('data', (data) => {
+      psqlProcess.stdout.on('data', (data) => {
         restoreOutput += data.toString();
         process.stdout.write(data);
       });
 
-      pgRestore.stderr.on('data', (data) => {
+      psqlProcess.stderr.on('data', (data) => {
         restoreError += data.toString();
         process.stderr.write(data);
       });
 
       await new Promise((resolve, reject) => {
-        pgRestore.on('close', (code) => {
+        psqlProcess.on('close', (code) => {
           if (code === 0) {
-            console.log('✅ Database restored successfully!');
+            console.log('✅ Database restored successfully with psql!');
             resolve();
           } else {
-            // pg_restore often returns non-zero codes even for successful restores
-            // Check if the restore actually worked by querying the database
-            console.log(`⚠️  pg_restore exited with code ${code}, checking if restore was successful...`);
+            console.log(`⚠️  psql exited with code ${code}, checking if restore was successful...`);
+            // Don't fail immediately, check if tables were created
             resolve();
           }
         });
 
-        pgRestore.on('error', (error) => {
-          reject(new Error(`Failed to start pg_restore: ${error.message}`));
+        psqlProcess.on('error', (error) => {
+          reject(new Error(`Failed to start psql: ${error.message}`));
         });
       });
 

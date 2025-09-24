@@ -1,6 +1,9 @@
 # Use official Node.js runtime as base image
 FROM node:18-alpine
 
+# Install PostgreSQL client tools
+RUN apk add --no-cache postgresql-client
+
 # Set working directory in container
 WORKDIR /app
 
