@@ -225,7 +225,9 @@ credentials/
 *_key
 *_secret
 api_keys.json
-service-account*.json
+*-credentials.json
+*-service-account.json
+firebase-adminsdk-*.json
 
 # AWS
 .aws/
@@ -233,14 +235,13 @@ aws-exports.js
 
 # Google Cloud
 gcloud/
-*.json
-service-account.json
+service-account*.json
+gcp-credentials*.json
 
 # Azure
 .azure/
 
 # Docker
-.dockerignore
 docker-compose.override.yml
 Dockerfile.dev
 .docker/

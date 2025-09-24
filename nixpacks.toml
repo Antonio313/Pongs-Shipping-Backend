@@ -1,16 +1,16 @@
 [build]
 providers = ["node"]
 
-[build.providers.node]
-version = "18"
-
-[build.env]
+[variables]
 NODE_ENV = "production"
 
-[build.install]
-cmd = "npm ci"
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "npm-9_x"]
 
-[build.build]
+[phases.install]
+cmd = "npm install --production"
+
+[phases.build]
 cmd = "npm run build"
 
 [start]
