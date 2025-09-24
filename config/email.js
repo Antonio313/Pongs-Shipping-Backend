@@ -50,7 +50,7 @@ const createTransporter = async () => {
       },
     };
 
-    return nodemailer.createTransporter(config);
+    return nodemailer.createTransport(config);
   }
 
   // For production, try OAuth2 first, then fallback to app password
@@ -75,7 +75,7 @@ const createTransporter = async () => {
         },
       };
 
-      return nodemailer.createTransporter(config);
+      return nodemailer.createTransport(config);
     }
   } catch (error) {
     console.warn('OAuth2 setup failed, falling back to app password:', error.message);
@@ -97,7 +97,7 @@ const createTransporter = async () => {
     }
   };
 
-  return nodemailer.createTransporter(config);
+  return nodemailer.createTransport(config);
 };
 
 const transporter = createTransporter();
