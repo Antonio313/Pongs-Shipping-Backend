@@ -338,6 +338,64 @@ router.post('/staff', authenticateToken, requireSuperAdmin, async (req, res) => 
   }
 });
 
+// PATCH /superadmin/staff/:id - Update staff member
+router.patch('/staff/:id', authenticateToken, requireSuperAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { first_name, last_name, email, role } = req.body;
+
+    // Validate required fields
+    if (!first_name || !last_name || !email || !role) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Validate role
+    if (!['A', 'S'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role. Must be A (Admin) or S (Super Admin)' });
+    }
+
+    // Check if staff member exists
+    const existingStaff = await pool.query(
+      'SELECT * FROM Users WHERE user_id = $1 AND role IN (\'A\', \'S\')',
+      [id]
+    );
+
+    if (existingStaff.rows.length === 0) {
+      return res.status(404).json({ message: 'Staff member not found' });
+    }
+
+    // Check if email is already taken by another user
+    const emailCheck = await pool.query(
+      'SELECT user_id FROM Users WHERE email = $1 AND user_id != $2',
+      [email, id]
+    );
+
+    if (emailCheck.rows.length > 0) {
+      return res.status(409).json({ message: 'Email already exists' });
+    }
+
+    // Update staff member
+    const updateResult = await pool.query(
+      'UPDATE Users SET first_name = $1, last_name = $2, email = $3, role = $4 WHERE user_id = $5 RETURNING *',
+      [first_name, last_name, email, role, id]
+    );
+
+    const updatedStaff = updateResult.rows[0];
+
+    // Remove sensitive information
+    delete updatedStaff.password_hash;
+
+    res.status(200).json({
+      message: 'Staff member updated successfully',
+      staff: updatedStaff
+    });
+
+  } catch (error) {
+    console.error('Error updating staff member:', error);
+    res.status(500).json({ message: 'Failed to update staff member' });
+  }
+});
+
 // DELETE /superadmin/staff/:id - Delete staff member
 router.delete('/staff/:id', authenticateToken, requireSuperAdmin, async (req, res) => {
   try {
