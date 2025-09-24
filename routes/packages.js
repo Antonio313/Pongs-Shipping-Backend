@@ -337,10 +337,16 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
     // Send email notification to customer if requested
     if (sendEmailNotification) {
       try {
+        console.log(`📧 Preparing status update email for package ${package.tracking_number}`);
+        console.log(`  Customer: ${package.first_name} ${package.last_name}`);
+        console.log(`  Email: ${package.email}`);
+        console.log(`  Status: ${status}`);
+
         let emailTemplate;
 
         // Special email template for "Arrived in Jamaica" with final cost
         if (status === 'Arrived in Jamaica' && finalCost !== undefined) {
+          console.log(`  Using special Jamaica arrival template with cost: $${finalCost}`);
           emailTemplate = emailTemplates.arrivedInJamaicaWithCost(
             package.first_name,
             package.tracking_number,
@@ -349,6 +355,7 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
             package.branch || 'your selected branch'
           );
         } else {
+          console.log(`  Using standard status update template`);
           // Standard status update email
           emailTemplate = emailTemplates.statusUpdate(
             package.first_name,
@@ -358,13 +365,17 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
           );
         }
 
-        await sendEmail(
+        const emailSent = await sendEmail(
           package.email,
           emailTemplate.subject,
           emailTemplate.html
         );
 
-        console.log(`Status update email sent to ${package.email} for package ${package.tracking_number}`);
+        if (emailSent) {
+          console.log(`✅ Status update email sent successfully to ${package.email} for package ${package.tracking_number}`);
+        } else {
+          console.log(`❌ Status update email failed to send to ${package.email} for package ${package.tracking_number}`);
+        }
 
       } catch (emailError) {
         console.error('Error sending email notification:', emailError);

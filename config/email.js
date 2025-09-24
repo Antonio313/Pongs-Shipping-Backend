@@ -812,6 +812,19 @@ const sendEmail = async (to, subject, html) => {
     console.log('✅ Email sent successfully!');
     console.log('  Message ID:', info.messageId);
     console.log('  Response:', info.response);
+    console.log('  Accepted:', info.accepted);
+    console.log('  Rejected:', info.rejected);
+    console.log('  Pending:', info.pending);
+    console.log('  Envelope:', info.envelope);
+
+    // Check if email was actually accepted
+    if (info.rejected && info.rejected.length > 0) {
+      console.warn('⚠️ Some recipients were rejected:', info.rejected);
+    }
+
+    if (info.accepted && info.accepted.length === 0) {
+      console.warn('⚠️ No recipients were accepted for delivery');
+    }
 
     return true;
   } catch (error) {
