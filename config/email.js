@@ -7,9 +7,33 @@ let transporterPromise = null;
 
 // Gmail OAuth2 setup for production
 const createGmailOAuth2 = async () => {
+  // Try Service Account first (more reliable)
+  if (process.env.GMAIL_SERVICE_ACCOUNT_KEY) {
+    try {
+      console.log('🔑 Using Gmail Service Account authentication...');
+
+      const serviceAccountKey = JSON.parse(process.env.GMAIL_SERVICE_ACCOUNT_KEY);
+      const jwtClient = new google.auth.JWT(
+        serviceAccountKey.client_email,
+        null,
+        serviceAccountKey.private_key,
+        ['https://www.googleapis.com/auth/gmail.send'],
+        process.env.SMTP_USER // Impersonate the user
+      );
+
+      const tokens = await jwtClient.authorize();
+      return tokens.access_token;
+    } catch (error) {
+      console.error('Service Account authentication failed:', error.message);
+    }
+  }
+
+  // Fallback to OAuth2 Client
   if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET || !process.env.GMAIL_REFRESH_TOKEN) {
     return null;
   }
+
+  console.log('🔑 Using Gmail OAuth2 Client authentication...');
 
   const oauth2Client = new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
@@ -25,7 +49,7 @@ const createGmailOAuth2 = async () => {
     const accessToken = await oauth2Client.getAccessToken();
     return accessToken.token;
   } catch (error) {
-    console.error('Failed to get OAuth2 access token:', error);
+    console.error('Failed to get OAuth2 access token:', error.message);
     return null;
   }
 };
