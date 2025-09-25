@@ -57,15 +57,15 @@ const createTransporter = async () => {
     return nodemailer.createTransport(config);
   }
 
-  // For production, try OAuth2 first, then fallback to app password
-  console.log('☁️ Using production email configuration...');
+  // For production, use Gmail API (OAuth2) to bypass Railway SMTP blocking
+  console.log('☁️ Using production Gmail API configuration...');
 
   // Try OAuth2 Gmail first
   try {
     const accessToken = await createGmailOAuth2();
 
     if (accessToken) {
-      console.log('✅ Using Gmail OAuth2 configuration...');
+      console.log('✅ Using Gmail OAuth2 API configuration...');
 
       const config = {
         service: 'gmail',
@@ -80,28 +80,21 @@ const createTransporter = async () => {
       };
 
       return nodemailer.createTransport(config);
+    } else {
+      console.error('❌ OAuth2 access token is null. Check your Gmail API credentials.');
     }
   } catch (error) {
-    console.warn('OAuth2 setup failed, falling back to app password:', error.message);
+    console.error('❌ OAuth2 setup failed:', error.message);
+    console.error('  Make sure these environment variables are set:');
+    console.error('  - GMAIL_CLIENT_ID');
+    console.error('  - GMAIL_CLIENT_SECRET');
+    console.error('  - GMAIL_REFRESH_TOKEN');
   }
 
-  // Fallback to app password with different strategy
-  console.log('📧 Falling back to Gmail app password...');
-
-  const config = {
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false
-    }
-  };
-
-  return nodemailer.createTransport(config);
+  // Railway blocks SMTP, so we cannot fallback to app password
+  console.error('❌ Gmail API setup failed. Email functionality will be disabled in production.');
+  console.error('   Railway blocks SMTP connections, so Gmail API with OAuth2 is required.');
+  return null;
 };
 
 // Get or create transporter with caching
