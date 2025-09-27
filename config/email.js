@@ -1,5 +1,7 @@
 const nodemailer = require('nodemailer');
 const { google } = require('googleapis');
+const sgMail = require('@sendgrid/mail');
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 
 // Cache for the transporter to avoid recreating it
 let transporterCache = null;
@@ -34,6 +36,9 @@ const createGmailOAuth2 = async () => {
   }
 
   console.log('🔑 Using Gmail OAuth2 Client authentication...');
+  console.log('  Client ID:', process.env.GMAIL_CLIENT_ID ? process.env.GMAIL_CLIENT_ID.substring(0, 20) + '...' : '[NOT SET]');
+  console.log('  Client Secret:', process.env.GMAIL_CLIENT_SECRET ? '[SET]' : '[NOT SET]');
+  console.log('  Refresh Token:', process.env.GMAIL_REFRESH_TOKEN ? '[SET]' : '[NOT SET]');
 
   const oauth2Client = new google.auth.OAuth2(
     process.env.GMAIL_CLIENT_ID,
@@ -46,10 +51,128 @@ const createGmailOAuth2 = async () => {
   });
 
   try {
-    const accessToken = await oauth2Client.getAccessToken();
-    return accessToken.token;
+    console.log('🔄 Attempting to refresh OAuth2 token...');
+    const accessTokenResponse = await oauth2Client.getAccessToken();
+
+    if (accessTokenResponse.token) {
+      console.log('✅ OAuth2 token refreshed successfully');
+      return accessTokenResponse.token;
+    } else {
+      console.error('❌ OAuth2 token refresh returned null');
+      return null;
+    }
   } catch (error) {
-    console.error('Failed to get OAuth2 access token:', error.message);
+    console.error('❌ Failed to get OAuth2 access token:', error.message);
+    console.error('  Error details:', {
+      name: error.name,
+      code: error.code,
+      status: error.status
+    });
+    return null;
+  }
+};
+
+// Amazon SES email sending (most reliable for production)
+const sendEmailViaSES = async (to, subject, html) => {
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_REGION) {
+    console.log('⚠️ Missing SES credentials - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, or AWS_REGION not set');
+    return null;
+  }
+
+  try {
+    console.log('📧 Using Amazon SES for email delivery...');
+    console.log('  Region:', process.env.AWS_REGION);
+    console.log('  From:', process.env.SMTP_FROM || 'noreply@pongsshipping.com');
+    console.log('  To:', to);
+
+    const sesClient = new SESClient({
+      region: process.env.AWS_REGION,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
+    });
+
+    const fromAddress = process.env.SMTP_FROM || 'noreply@pongsshipping.com';
+
+    const params = {
+      Source: fromAddress,
+      Destination: {
+        ToAddresses: [to],
+      },
+      Message: {
+        Subject: {
+          Data: subject,
+          Charset: 'UTF-8',
+        },
+        Body: {
+          Html: {
+            Data: html,
+            Charset: 'UTF-8',
+          },
+          Text: {
+            Data: html.replace(/<[^>]*>/g, ''), // Simple HTML to text conversion
+            Charset: 'UTF-8',
+          },
+        },
+      },
+    };
+
+    const command = new SendEmailCommand(params);
+    const result = await sesClient.send(command);
+
+    console.log('✅ Amazon SES email sent successfully!');
+    console.log('  Message ID:', result.MessageId);
+    console.log('  Request ID:', result.$metadata.requestId);
+    console.log('  HTTP Status:', result.$metadata.httpStatusCode);
+    return true;
+  } catch (error) {
+    console.error('❌ Amazon SES failed:', error.name);
+    console.error('  Error message:', error.message);
+
+    // Handle specific SES errors
+    if (error.name === 'MessageRejected') {
+      console.error('  Reason: Email was rejected - check sender verification');
+    } else if (error.name === 'MailFromDomainNotVerifiedException') {
+      console.error('  Reason: Sender domain not verified in SES');
+    } else if (error.name === 'ConfigurationSetDoesNotExistException') {
+      console.error('  Reason: Configuration set does not exist');
+    } else if (error.name === 'AccountSendingPausedException') {
+      console.error('  Reason: SES account sending is paused - check AWS console');
+    } else if (error.name === 'SendingQuotaExceededException') {
+      console.error('  Reason: SES daily sending quota exceeded');
+    } else if (error.name === 'InvalidParameterValueException') {
+      console.error('  Reason: Invalid parameter - check email addresses and content');
+    }
+
+    console.error('  Full error details:', error);
+    return null;
+  }
+};
+
+// SendGrid email sending (fallback option)
+const sendEmailViaSendGrid = async (to, subject, html) => {
+  if (!process.env.SENDGRID_API_KEY) {
+    return null;
+  }
+
+  try {
+    console.log('📧 Using SendGrid for email delivery...');
+
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+    const msg = {
+      to: to,
+      from: process.env.SMTP_FROM || 'noreply@pongsshipping.com',
+      subject: subject,
+      html: html,
+    };
+
+    const result = await sgMail.send(msg);
+    console.log('✅ SendGrid email sent successfully:', result[0].statusCode);
+    return true;
+  } catch (error) {
+    console.error('❌ SendGrid failed:', error.message);
     return null;
   }
 };
@@ -870,13 +993,77 @@ const emailTemplates = {
   })
 };
 
+// Send email via nodemailer transporter
+const sendViaTransporter = async (transporter, to, subject, html) => {
+  try {
+    const mailOptions = {
+      from: process.env.SMTP_FROM || 'noreply@pongsshipping.com',
+      to,
+      subject,
+      html
+    };
+
+    console.log('📧 Sending via transporter...');
+    const info = await transporter.sendMail(mailOptions);
+
+    console.log('✅ Email sent successfully via transporter!');
+    console.log('  Message ID:', info.messageId);
+    console.log('  Response:', info.response);
+
+    return true;
+  } catch (error) {
+    console.error('❌ Transporter send failed:', error.message);
+    return false;
+  }
+};
+
 const sendEmail = async (to, subject, html) => {
   console.log('📤 Attempting to send email...');
   console.log('  To:', to);
   console.log('  Subject:', subject);
 
+  // Try Amazon SES first (recommended method for production)
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION) {
+    console.log('🔄 Attempting Amazon SES...');
+    const sesResult = await sendEmailViaSES(to, subject, html);
+    if (sesResult) {
+      return true;
+    }
+    console.log('⚠️ Amazon SES failed, trying fallback services...');
+  } else {
+    console.log('⚠️ Amazon SES credentials not configured, trying alternatives...');
+  }
+
+  // Try Gmail API as fallback (if configured)
   try {
-    // Get transporter (with caching)
+    const transporter = await getTransporter();
+    if (transporter && transporter !== 'SENDGRID') {
+      console.log('🔄 Attempting Gmail API...');
+      const result = await sendViaTransporter(transporter, to, subject, html);
+      if (result) {
+        return true;
+      }
+      console.log('⚠️ Gmail API failed, trying remaining services...');
+    }
+  } catch (error) {
+    console.log('⚠️ Gmail API error, trying remaining services...', error.message);
+  }
+
+  // Try SendGrid as last resort
+  if (process.env.SENDGRID_API_KEY) {
+    console.log('🔄 Attempting SendGrid...');
+    const sendGridResult = await sendEmailViaSendGrid(to, subject, html);
+    if (sendGridResult) {
+      return true;
+    }
+    console.log('⚠️ SendGrid failed...');
+  }
+
+  console.error('❌ All email services failed. Email not sent to:', to);
+  return false;
+
+  try {
+    // Fallback to transporter (Gmail API or SMTP for development)
     const transporter = await getTransporter();
 
     if (!transporter) {

@@ -32,7 +32,12 @@ if (process.env.NODE_ENV === 'production') {
   if (process.env.FRONTEND_URL) {
     allowedOrigins.push(process.env.FRONTEND_URL);
   }
-  // Add Railway pattern URLs
+
+  // Add custom domain patterns
+  allowedOrigins.push('https://pongsshipping.com');
+  allowedOrigins.push('https://www.pongsshipping.com');
+
+  // Add Railway pattern URLs (keep as fallback)
   allowedOrigins.push(/^https:\/\/.*\.up\.railway\.app$/);
   allowedOrigins.push(/^https:\/\/.*\.railway\.app$/);
 }
