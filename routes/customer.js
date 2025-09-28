@@ -79,12 +79,15 @@ router.get('/profile/stats', authenticateToken, async (req, res) => {
   }
 });
 
-// Function to generate address based on branch, preserving user ID
-const generateAddress = (branch, currentAddress = '', userId = null) => {
-  if (!branch) return currentAddress;
+// Function to generate complete address structure based on branch, preserving user ID
+const generateCompleteAddress = (branch, currentAddress = '', userId = null) => {
+  if (!branch) return { formatted: currentAddress, data: null };
 
-  // Fixed Address 1 for all users
-  const address1 = '3132 NW 43rd Street';
+  // Fixed address components
+  const addressLine1 = '3132 NW 43rd Street';
+  const city = 'Lauderdale Lakes';
+  const state = 'Florida';
+  const zipCode = '33309';
 
   // Extract user ID from current address using regex
   const pscMatch = currentAddress.match(/PSC\s+\w+\s+(\d+)/);
@@ -96,12 +99,23 @@ const generateAddress = (branch, currentAddress = '', userId = null) => {
     // If we can't extract from address, use the provided userId
     userIdNumber = userId < 10 ? `0${userId}` : `${userId}`;
   } else {
-    // If we can't extract the user ID and no userId provided, keep current address unchanged
-    return currentAddress;
+    // If we can't extract the user ID and no userId provided, return current address
+    return { formatted: currentAddress, data: null };
   }
 
-  // Generate new address with updated branch and user ID
-  return `${address1}, PSC ${branch} ${userIdNumber}`;
+  // Generate complete address structure
+  const addressLine2 = `PSC ${branch} ${userIdNumber}`;
+
+  const addressData = {
+    address_line_1: addressLine1,
+    address_line_2: addressLine2,
+    city: city,
+    state: state,
+    zip_code: zipCode,
+    formatted: `${addressLine1}, ${addressLine2}, ${city}, ${state} ${zipCode}`
+  };
+
+  return { formatted: addressData.formatted, data: addressData };
 };
 
 // Update customer profile information
@@ -120,17 +134,25 @@ router.put('/profile', authenticateToken, async (req, res) => {
     const currentUserResult = await pool.query(currentUserQuery, [customerId]);
     const currentAddress = currentUserResult.rows[0]?.address || '';
 
-    // Auto-generate address based on selected branch, preserving user ID
-    const address = generateAddress(branch, currentAddress, customerId);
+    // Auto-generate complete address based on selected branch, preserving user ID
+    const addressResult = generateCompleteAddress(branch, currentAddress, customerId);
 
     const updateQuery = `
       UPDATE Users
-      SET first_name = $1, last_name = $2, phone = $3, address = $4, branch = $5, updated_at = NOW()
-      WHERE user_id = $6 AND role = 'C'
-      RETURNING user_id, first_name, last_name, email, phone, address, branch, created_at, is_verified
+      SET first_name = $1, last_name = $2, phone = $3, address = $4, address_data = $5, branch = $6, updated_at = NOW()
+      WHERE user_id = $7 AND role = 'C'
+      RETURNING user_id, first_name, last_name, email, phone, address, address_data, branch, created_at, is_verified
     `;
 
-    const result = await pool.query(updateQuery, [first_name, last_name, phone, address, branch, customerId]);
+    const result = await pool.query(updateQuery, [
+      first_name,
+      last_name,
+      phone,
+      addressResult.formatted,
+      addressResult.data ? JSON.stringify(addressResult.data) : null,
+      branch,
+      customerId
+    ]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Customer not found' });
@@ -195,6 +217,62 @@ router.put('/profile/password', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error changing customer password:', error);
     res.status(500).json({ message: 'Failed to change password' });
+  }
+});
+
+// Get customer complete address information
+router.get('/address', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is customer
+    if (req.user.role !== 'C') {
+      return res.status(403).json({ message: 'Access denied. Customer only.' });
+    }
+
+    const customerId = req.user.user_id;
+
+    const userQuery = 'SELECT address, address_data, branch FROM Users WHERE user_id = $1';
+    const userResult = await pool.query(userQuery, [customerId]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Customer not found' });
+    }
+
+    const user = userResult.rows[0];
+    let addressData = null;
+
+    // Try to parse address_data if it exists
+    if (user.address_data) {
+      try {
+        addressData = JSON.parse(user.address_data);
+      } catch (e) {
+        console.warn('Failed to parse address_data for user:', customerId);
+      }
+    }
+
+    // If no address_data exists, generate it from current address and branch
+    if (!addressData && user.address && user.branch) {
+      const addressResult = generateCompleteAddress(user.branch, user.address, customerId);
+      addressData = addressResult.data;
+
+      // Update the database with the generated address_data
+      if (addressData) {
+        await pool.query(
+          'UPDATE Users SET address_data = $1 WHERE user_id = $2',
+          [JSON.stringify(addressData), customerId]
+        );
+      }
+    }
+
+    res.json({
+      success: true,
+      address: {
+        formatted: user.address,
+        ...addressData
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching customer address:', error);
+    res.status(500).json({ message: 'Failed to fetch address information' });
   }
 });
 
