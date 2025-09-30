@@ -52,6 +52,7 @@ router.get('/profile/stats', authenticateToken, async (req, res) => {
       deliveries_count: parseInt(deliveryStats.deliveries_count) || 0,
       total_amount_handled: parseFloat(deliveryStats.total_amount_handled) || 0,
       packages_processed: parseInt(packagesProcessed) || 0,
+      total_packages_handled: parseInt(packagesProcessed) || 0, // Alias for consistency
       customers_served: parseInt(customersServed) || 0,
       last_delivery: deliveryStats.last_delivery
     };
