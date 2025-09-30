@@ -347,10 +347,9 @@ router.post('/reset-password', async (req, res) => {
 router.post('/validate-token', authenticateToken, async (req, res) => {
   try {
     // If we reach here, the token is valid (authenticateToken middleware passed)
-    const userId = req.user.userId;
+    // req.user is already the full user object from the database (set by authenticateToken middleware)
+    const user = req.user;
 
-    // Optionally, check if user still exists and is verified
-    const user = await User.findById(userId);
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
     }

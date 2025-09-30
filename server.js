@@ -21,9 +21,9 @@ app.use(express.json());
 
 // Dynamic CORS configuration for Railway deployment flexibility
 const allowedOrigins = [
-  'http://localhost:5173', // Local development
+  'http://localhost:5173', // Local development (Vite dev server)
+  'http://localhost:5174', // Local development alternative
   'http://localhost:3000', // Local development alternative
-  'http://localhost:3001', // Local development alternative
 ];
 
 // Add production origins

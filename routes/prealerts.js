@@ -1,6 +1,6 @@
 const express = require('express');
 const PreAlert = require('../models/PreAlert');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, authenticateTokenRequireVerified } = require('../middleware/auth');
 const { uploadSingle, handleUploadError } = require('../middleware/upload');
 const s3Service = require('../services/s3Service');
 const router = express.Router();

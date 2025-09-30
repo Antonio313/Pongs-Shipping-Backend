@@ -33,18 +33,10 @@ const User = {
   findById: async (id) => {
     try {
       const result = await pool.query(
-        'SELECT user_id, first_name, last_name, email, phone, address, address_data, branch, role, is_verified, created_at FROM users WHERE user_id = $1',
+        'SELECT user_id, first_name, last_name, email, phone, address, branch, role, is_verified, created_at FROM users WHERE user_id = $1',
         [id]
       );
       const user = result.rows[0];
-      if (user && user.address_data) {
-        try {
-          user.address_data = JSON.parse(user.address_data);
-        } catch (e) {
-          console.warn('Failed to parse address_data for user:', id);
-          user.address_data = null;
-        }
-      }
       return user;
     } catch (error) {
       throw error;
@@ -108,27 +100,19 @@ const User = {
       const state = 'Florida';
       const zipCode = '33309';
 
-      // Store complete address as JSON object for flexibility
-      const addressData = {
-        address_line_1: addressLine1,
-        address_line_2: addressLine2,
-        city: city,
-        state: state,
-        zip_code: zipCode,
-        formatted: `${addressLine1}, ${addressLine2}, ${city}, ${state} ${zipCode}`
-      };
+      // Store complete address as formatted string
+      const formattedAddress = `${addressLine1}, ${addressLine2}, ${city}, ${state} ${zipCode}`;
 
-      // Update the user with the formatted address data
+      // Update the user with the formatted address
       await pool.query(
-        'UPDATE users SET address = $1, address_data = $2 WHERE user_id = $3',
-        [addressData.formatted, JSON.stringify(addressData), newUser.user_id]
+        'UPDATE users SET address = $1 WHERE user_id = $2',
+        [formattedAddress, newUser.user_id]
       );
-      
+
       // Return the user with all data including verification token
       return {
         ...newUser,
-        address: addressData.formatted,
-        address_data: addressData,
+        address: formattedAddress,
         verification_token: verificationToken // Return the original token for email
       };
     } catch (error) {
