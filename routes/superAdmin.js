@@ -98,7 +98,7 @@ router.get('/dashboard', authenticateToken, requireSuperAdmin, async (req, res) 
       pool.query(`
         SELECT COUNT(*) as active_staff
         FROM Users
-        WHERE role IN ('A', 'S') AND DATE(created_at) >= $1
+        WHERE role IN ('A', 'S', 'T', 'H', 'D', 'F') AND DATE(created_at) >= $1
       `, [lastMonth]),
 
       // Recent activity
@@ -167,7 +167,7 @@ router.get('/staff-performance', authenticateToken, requireSuperAdmin, async (re
         FROM Staff_Actions_Log sal
         JOIN Users u ON sal.staff_id = u.user_id
         WHERE sal.created_at >= $1 ${staffFilter}
-          AND u.role IN ('A', 'S')
+          AND u.role IN ('A', 'S', 'T', 'H', 'D', 'F')
         GROUP BY sal.staff_id, u.first_name, u.last_name, u.branch, u.email
       ),
       all_staff AS (
@@ -185,7 +185,7 @@ router.get('/staff-performance', authenticateToken, requireSuperAdmin, async (re
           0 as total_actions,
           NULL::timestamp as last_activity
         FROM Users u
-        WHERE u.role IN ('A', 'S')
+        WHERE u.role IN ('A', 'S', 'T', 'H', 'D', 'F')
           AND NOT EXISTS (
             SELECT 1 FROM staff_actions sa WHERE sa.staff_id = u.user_id
           )
@@ -208,7 +208,7 @@ router.get('/staff-performance', authenticateToken, requireSuperAdmin, async (re
       FROM Staff_Actions_Log sal
       JOIN Users u ON sal.staff_id = u.user_id
       WHERE sal.created_at >= $1 ${staffFilter}
-        AND u.role IN ('A', 'S')
+        AND u.role IN ('A', 'S', 'T', 'H', 'D', 'F')
       ORDER BY sal.created_at DESC
       LIMIT 50
     `;
@@ -231,7 +231,7 @@ router.get('/staff-performance', authenticateToken, requireSuperAdmin, async (re
       FROM Staff_Actions_Log sal
       JOIN Users u ON sal.staff_id = u.user_id
       WHERE sal.created_at >= $1 ${staffFilter}
-        AND u.role IN ('A', 'S')
+        AND u.role IN ('A', 'S', 'T', 'H', 'D', 'F')
       GROUP BY DATE(sal.created_at), sal.staff_id, u.first_name, u.last_name, u.branch
       ORDER BY date DESC, revenue_generated DESC
     `;
@@ -270,7 +270,7 @@ router.get('/staff', authenticateToken, requireSuperAdmin, async (req, res) => {
         created_at,
         (SELECT COUNT(*) FROM Staff_Performance WHERE staff_id = Users.user_id) as performance_records
       FROM Users
-      WHERE role IN ('A', 'S')
+      WHERE role IN ('A', 'S', 'T', 'H', 'D', 'F', 'C')
       ORDER BY created_at DESC
     `);
 
@@ -290,8 +290,8 @@ router.post('/staff', authenticateToken, requireSuperAdmin, async (req, res) => 
       return res.status(400).json({ message: 'All required fields must be provided' });
     }
 
-    if (!['A', 'S'].includes(role)) {
-      return res.status(400).json({ message: 'Invalid role. Must be A (Admin) or S (Super Admin)' });
+    if (!['A', 'S', 'T', 'H', 'D', 'F', 'C'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role. Must be one of: S (Super Admin), A (Admin), T (Cashier), H (Package Handler), D (Transfer Personnel), F (Front Desk), C (Customer)' });
     }
 
     // Check if email already exists
@@ -314,12 +314,21 @@ router.post('/staff', authenticateToken, requireSuperAdmin, async (req, res) => 
     const newStaff = result.rows[0];
 
     // Log the action
+    const roleNames = {
+      'S': 'super admin',
+      'A': 'admin',
+      'T': 'cashier',
+      'H': 'package handler',
+      'D': 'transfer personnel',
+      'F': 'front desk',
+      'C': 'customer'
+    };
     await logStaffAction(
       req.user.userId,
       'staff_created',
       'user',
       newStaff.user_id,
-      `Created new ${role === 'A' ? 'admin' : 'super admin'} staff member: ${first_name} ${last_name}`,
+      `Created new ${roleNames[role] || role} user: ${first_name} ${last_name}`,
       0,
       { email, branch, role }
     );
@@ -350,13 +359,13 @@ router.patch('/staff/:id', authenticateToken, requireSuperAdmin, async (req, res
     }
 
     // Validate role
-    if (!['A', 'S'].includes(role)) {
-      return res.status(400).json({ message: 'Invalid role. Must be A (Admin) or S (Super Admin)' });
+    if (!['A', 'S', 'T', 'H', 'D', 'F', 'C'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role. Must be one of: S (Super Admin), A (Admin), T (Cashier), H (Package Handler), D (Transfer Personnel), F (Front Desk), C (Customer)' });
     }
 
     // Check if staff member exists
     const existingStaff = await pool.query(
-      'SELECT * FROM Users WHERE user_id = $1 AND role IN (\'A\', \'S\')',
+      'SELECT * FROM Users WHERE user_id = $1',
       [id]
     );
 
@@ -520,7 +529,7 @@ router.get('/analytics/revenue', authenticateToken, requireSuperAdmin, async (re
           COUNT(CASE WHEN sal.action_type = 'package_delivery' THEN 1 END) as total_packages
         FROM Staff_Actions_Log sal
         JOIN Users u ON sal.staff_id = u.user_id
-        WHERE sal.created_at >= $1 AND u.role IN ('A', 'S')
+        WHERE sal.created_at >= $1 AND u.role IN ('A', 'S', 'T', 'H', 'D', 'F')
         GROUP BY sal.staff_id, u.first_name, u.last_name, u.branch
         ORDER BY total_revenue DESC
       `, [startDate]),
@@ -533,7 +542,7 @@ router.get('/analytics/revenue', authenticateToken, requireSuperAdmin, async (re
           COALESCE(SUM(CASE WHEN sal.action_type = 'package_delivery' THEN sal.revenue_impact ELSE 0 END), 0) as revenue
         FROM Staff_Actions_Log sal
         JOIN Users u ON sal.staff_id = u.user_id
-        WHERE sal.created_at >= $1 AND u.role IN ('A', 'S')
+        WHERE sal.created_at >= $1 AND u.role IN ('A', 'S', 'T', 'H', 'D', 'F')
         GROUP BY u.branch
         ORDER BY revenue DESC
       `, [startDate])
@@ -589,7 +598,7 @@ router.get('/system-overview', authenticateToken, requireSuperAdmin, async (req,
           role,
           COUNT(*) as count
         FROM Users
-        WHERE role IN ('A', 'S')
+        WHERE role IN ('A', 'S', 'T', 'H', 'D', 'F')
         GROUP BY branch, role
         ORDER BY branch, role
       `)

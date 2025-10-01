@@ -1,6 +1,6 @@
 const express = require('express');
 const PreAlert = require('../models/PreAlert');
-const { authenticateToken, authenticateTokenRequireVerified } = require('../middleware/auth');
+const { authenticateToken, authenticateTokenRequireVerified, requireAdmin, requireRole } = require('../middleware/auth');
 const { uploadSingle, handleUploadError } = require('../middleware/upload');
 const s3Service = require('../services/s3Service');
 const router = express.Router();
@@ -17,12 +17,8 @@ router.get('/my-prealerts', authenticateToken, async (req, res) => {
 });
 
 // Get all prealerts (admin only)
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const prealerts = await PreAlert.findAll();
     res.status(200).json(prealerts);
@@ -41,8 +37,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'PreAlert not found' });
     }
 
-    // Check if user owns the prealert or is admin/super admin
-    if (prealert.user_id !== req.user.user_id && req.user.role !== 'A' && req.user.role !== 'S') {
+    // Check if user owns the prealert or is staff
+    const staffRoles = ['A', 'S', 'H', 'T', 'D', 'F'];
+    if (prealert.user_id !== req.user.user_id && !staffRoles.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -135,8 +132,9 @@ router.put('/:id', authenticateToken, uploadSingle('receipt'), async (req, res) 
       });
     }
 
-    // Check if user owns the prealert or is admin/super admin
-    if (prealert.user_id !== req.user.user_id && req.user.role !== 'A' && req.user.role !== 'S') {
+    // Check if user owns the prealert or is staff
+    const staffRoles = ['A', 'S', 'H', 'T', 'D', 'F'];
+    if (prealert.user_id !== req.user.user_id && !staffRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -220,13 +218,9 @@ router.put('/:id', authenticateToken, uploadSingle('receipt'), async (req, res) 
   }
 });
 
-// Confirm prealert (admin only - link to package)
-router.patch('/:id/confirm', authenticateToken, async (req, res) => {
+// Confirm prealert (admin only - link to package) - Package Handler, Admin, and Front Desk
+router.patch('/:id/confirm', authenticateToken, requireRole(['A', 'S', 'H', 'F']), async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const { package_id } = req.body;
     
@@ -264,8 +258,9 @@ router.get('/:id/receipt', authenticateToken, async (req, res) => {
       });
     }
 
-    // Check if user owns the prealert or is admin/super admin
-    if (prealert.user_id !== req.user.user_id && req.user.role !== 'A' && req.user.role !== 'S') {
+    // Check if user owns the prealert or is staff
+    const staffRoles = ['A', 'S', 'H', 'T', 'D', 'F'];
+    if (prealert.user_id !== req.user.user_id && !staffRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -317,8 +312,9 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    // Check if user owns the prealert or is admin/super admin
-    if (prealert.user_id !== req.user.user_id && req.user.role !== 'A' && req.user.role !== 'S') {
+    // Check if user owns the prealert or is staff
+    const staffRoles = ['A', 'S', 'H', 'T', 'D', 'F'];
+    if (prealert.user_id !== req.user.user_id && !staffRoles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,
         message: 'Access denied'
@@ -370,8 +366,9 @@ router.get('/status/:status', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Invalid status. Use "C" for confirmed or "U" for unconfirmed.' });
     }
 
-    // For non-admin users, only return their own prealerts
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
+    // For non-staff users, only return their own prealerts
+    const staffRoles = ['A', 'S', 'H', 'T', 'D', 'F'];
+    if (!staffRoles.includes(req.user.role)) {
       const prealerts = await PreAlert.findByUserId(req.user.user_id);
       const filteredPrealerts = prealerts.filter(pa => pa.status === status);
       return res.status(200).json(filteredPrealerts);

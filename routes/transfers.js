@@ -58,10 +58,11 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Admin middleware
+// Admin middleware - Allow roles that can manage transfers
 const requireAdmin = (req, res, next) => {
-  if (req.user.role !== 'A' && req.user.role !== 'S') {
-    return res.status(403).json({ message: 'Admin access required' });
+  const transferRoles = ['A', 'S', 'H', 'D']; // Admin, Super Admin, Package Handler, Transfer Personnel
+  if (!transferRoles.includes(req.user.role)) {
+    return res.status(403).json({ message: 'Transfer management access required' });
   }
   next();
 };

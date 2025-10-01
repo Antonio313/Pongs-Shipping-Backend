@@ -2,16 +2,12 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../config/database');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireAdmin } = require('../middleware/auth');
 const router = express.Router();
 
 // Get all customers (for admin dashboard)
-router.get('/customers', authenticateToken, async (req, res) => {
+router.get('/customers', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin only.' });
-    }
 
     const result = await pool.query(
       `SELECT u.user_id, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch, 
@@ -32,12 +28,8 @@ router.get('/customers', authenticateToken, async (req, res) => {
 });
 
 // Get a specific customer with their pre-alerts
-router.get('/customers/:id', authenticateToken, async (req, res) => {
+router.get('/customers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin only.' });
-    }
 
     const { id } = req.params;
     
@@ -74,12 +66,8 @@ router.get('/customers/:id', authenticateToken, async (req, res) => {
 });
 
 // Get admin profile statistics
-router.get('/profile/stats', authenticateToken, async (req, res) => {
+router.get('/profile/stats', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin only.' });
-    }
 
     const adminId = req.user.user_id;
 
@@ -145,12 +133,8 @@ router.get('/profile/stats', authenticateToken, async (req, res) => {
 });
 
 // Update admin profile information
-router.put('/profile', authenticateToken, async (req, res) => {
+router.put('/profile', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin only.' });
-    }
 
     const { first_name, last_name, phone, branch } = req.body;
     const adminId = req.user.user_id;
@@ -180,12 +164,8 @@ router.put('/profile', authenticateToken, async (req, res) => {
 });
 
 // Change admin password
-router.put('/profile/password', authenticateToken, async (req, res) => {
+router.put('/profile/password', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin only.' });
-    }
 
     const { current_password, new_password } = req.body;
     const adminId = req.user.user_id;

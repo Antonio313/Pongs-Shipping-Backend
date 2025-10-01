@@ -1,7 +1,7 @@
 const express = require('express');
 const Package = require('../models/Package');
 const PreAlert = require('../models/PreAlert');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requireAdmin, requireRole } = require('../middleware/auth');
 const { sendEmail, emailTemplates } = require('../config/email');
 const pool = require('../config/database');
 const router = express.Router();
@@ -58,12 +58,8 @@ router.get('/my-packages', authenticateToken, async (req, res) => {
 });
 
 // Get all packages (admin only)
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const filters = {
       status: req.query.status,
@@ -88,8 +84,9 @@ router.get('/:id', authenticateToken, async (req, res) => {
       return res.status(404).json({ message: 'Package not found' });
     }
 
-    // Check if user owns the package or is admin/super admin
-    if (package.user_id !== req.user.user_id && req.user.role !== 'A' && req.user.role !== 'S') {
+    // Check if user owns the package or is staff
+    const staffRoles = ['A', 'S', 'H', 'T', 'D', 'F'];
+    if (package.user_id !== req.user.user_id && !staffRoles.includes(req.user.role)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -143,13 +140,9 @@ router.get('/track/:trackingNumber', async (req, res) => {
   }
 });
 
-// Create new package (admin only)
-router.post('/', authenticateToken, async (req, res) => {
+// Create new package (admin and package handler only)
+router.post('/', authenticateToken, requireRole(['A', 'S', 'H']), async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const { user_id, description, weight, length, width, height, cost, status } = req.body;
     
@@ -174,13 +167,9 @@ router.post('/', authenticateToken, async (req, res) => {
   }
 });
 
-// Confirm prealert and create package (admin only)
-router.post('/confirm-prealert/:prealertId', authenticateToken, async (req, res) => {
+// Confirm prealert and create package (admin and package handler only)
+router.post('/confirm-prealert/:prealertId', authenticateToken, requireRole(['A', 'S', 'H']), async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const { weight, length, width, height, cost, status } = req.body;
     
@@ -273,13 +262,9 @@ router.post('/confirm-prealert/:prealertId', authenticateToken, async (req, res)
   }
 });
 
-// Update package (admin only)
-router.put('/:id', authenticateToken, async (req, res) => {
+// Update package (admin and package handler only)
+router.put('/:id', authenticateToken, requireRole(['A', 'S', 'H']), async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const package = await Package.findById(req.params.id);
     
@@ -300,12 +285,8 @@ router.put('/:id', authenticateToken, async (req, res) => {
 });
 
 // Update package status and send email notification
-router.patch('/:id/status', authenticateToken, async (req, res) => {
+router.patch('/:id/status', authenticateToken, requireRole(['A', 'S', 'H']), async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const { status, location, notes, finalCost, sendEmailNotification = true } = req.body;
 
@@ -422,13 +403,9 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete package (admin only)
-router.delete('/:id', authenticateToken, async (req, res) => {
+// Delete package (admin and package handler only)
+router.delete('/:id', authenticateToken, requireRole(['A', 'S', 'H']), async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const package = await Package.findById(req.params.id);
     
@@ -457,8 +434,9 @@ router.get('/status/:status', authenticateToken, async (req, res) => {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
-    // For non-admin users, only return their own packages
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
+    // For non-staff users, only return their own packages
+    const staffRoles = ['A', 'S', 'H', 'T', 'D', 'F'];
+    if (!staffRoles.includes(req.user.role)) {
       const packages = await Package.findByUserId(req.user.user_id);
       const filteredPackages = packages.filter(pkg => pkg.status === status);
       return res.status(200).json(filteredPackages);
@@ -474,12 +452,8 @@ router.get('/status/:status', authenticateToken, async (req, res) => {
 });
 
 // Send package notification to customer (admin only)
-router.post('/notify-customer/:customerId', authenticateToken, async (req, res) => {
+router.post('/notify-customer/:customerId', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    // Check if user is admin or super admin
-    if (req.user.role !== 'A' && req.user.role !== 'S') {
-      return res.status(403).json({ message: 'Access denied. Admin required.' });
-    }
 
     const { customerId } = req.params;
     const { description, weight, tracking_number, carrier, notes } = req.body;

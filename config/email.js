@@ -1,163 +1,18 @@
 const nodemailer = require('nodemailer');
-const { google } = require('googleapis');
 const sgMail = require('@sendgrid/mail');
-const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 
-// Cache for the transporter to avoid recreating it
-let transporterCache = null;
-let transporterPromise = null;
-
-// Gmail OAuth2 setup for production
-const createGmailOAuth2 = async () => {
-  // Try Service Account first (more reliable)
-  if (process.env.GMAIL_SERVICE_ACCOUNT_KEY) {
-    try {
-      console.log('🔑 Using Gmail Service Account authentication...');
-
-      const serviceAccountKey = JSON.parse(process.env.GMAIL_SERVICE_ACCOUNT_KEY);
-      const jwtClient = new google.auth.JWT(
-        serviceAccountKey.client_email,
-        null,
-        serviceAccountKey.private_key,
-        ['https://www.googleapis.com/auth/gmail.send'],
-        process.env.SMTP_USER // Impersonate the user
-      );
-
-      const tokens = await jwtClient.authorize();
-      return tokens.access_token;
-    } catch (error) {
-      console.error('Service Account authentication failed:', error.message);
-    }
-  }
-
-  // Fallback to OAuth2 Client
-  if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET || !process.env.GMAIL_REFRESH_TOKEN) {
-    return null;
-  }
-
-  console.log('🔑 Using Gmail OAuth2 Client authentication...');
-  console.log('  Client ID:', process.env.GMAIL_CLIENT_ID ? process.env.GMAIL_CLIENT_ID.substring(0, 20) + '...' : '[NOT SET]');
-  console.log('  Client Secret:', process.env.GMAIL_CLIENT_SECRET ? '[SET]' : '[NOT SET]');
-  console.log('  Refresh Token:', process.env.GMAIL_REFRESH_TOKEN ? '[SET]' : '[NOT SET]');
-
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GMAIL_CLIENT_ID,
-    process.env.GMAIL_CLIENT_SECRET,
-    'https://developers.google.com/oauthplayground'
-  );
-
-  oauth2Client.setCredentials({
-    refresh_token: process.env.GMAIL_REFRESH_TOKEN
-  });
-
-  try {
-    console.log('🔄 Attempting to refresh OAuth2 token...');
-    const accessTokenResponse = await oauth2Client.getAccessToken();
-
-    if (accessTokenResponse.token) {
-      console.log('✅ OAuth2 token refreshed successfully');
-      return accessTokenResponse.token;
-    } else {
-      console.error('❌ OAuth2 token refresh returned null');
-      return null;
-    }
-  } catch (error) {
-    console.error('❌ Failed to get OAuth2 access token:', error.message);
-    console.error('  Error details:', {
-      name: error.name,
-      code: error.code,
-      status: error.status
-    });
-    return null;
-  }
-};
-
-// Amazon SES email sending (most reliable for production)
-const sendEmailViaSES = async (to, subject, html) => {
-  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY || !process.env.AWS_REGION) {
-    console.log('⚠️ Missing SES credentials - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, or AWS_REGION not set');
-    return null;
-  }
-
-  try {
-    console.log('📧 Using Amazon SES for email delivery...');
-    console.log('  Region:', process.env.AWS_REGION);
-    console.log('  From:', process.env.SMTP_FROM || 'noreply@pongsshipping.com');
-    console.log('  To:', to);
-
-    const sesClient = new SESClient({
-      region: process.env.AWS_REGION,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-      },
-    });
-
-    const fromAddress = process.env.SMTP_FROM || 'noreply@pongsshipping.com';
-
-    const params = {
-      Source: fromAddress,
-      Destination: {
-        ToAddresses: [to],
-      },
-      Message: {
-        Subject: {
-          Data: subject,
-          Charset: 'UTF-8',
-        },
-        Body: {
-          Html: {
-            Data: html,
-            Charset: 'UTF-8',
-          },
-          Text: {
-            Data: html.replace(/<[^>]*>/g, ''), // Simple HTML to text conversion
-            Charset: 'UTF-8',
-          },
-        },
-      },
-    };
-
-    const command = new SendEmailCommand(params);
-    const result = await sesClient.send(command);
-
-    console.log('✅ Amazon SES email sent successfully!');
-    console.log('  Message ID:', result.MessageId);
-    console.log('  Request ID:', result.$metadata.requestId);
-    console.log('  HTTP Status:', result.$metadata.httpStatusCode);
-    return true;
-  } catch (error) {
-    console.error('❌ Amazon SES failed:', error.name);
-    console.error('  Error message:', error.message);
-
-    // Handle specific SES errors
-    if (error.name === 'MessageRejected') {
-      console.error('  Reason: Email was rejected - check sender verification');
-    } else if (error.name === 'MailFromDomainNotVerifiedException') {
-      console.error('  Reason: Sender domain not verified in SES');
-    } else if (error.name === 'ConfigurationSetDoesNotExistException') {
-      console.error('  Reason: Configuration set does not exist');
-    } else if (error.name === 'AccountSendingPausedException') {
-      console.error('  Reason: SES account sending is paused - check AWS console');
-    } else if (error.name === 'SendingQuotaExceededException') {
-      console.error('  Reason: SES daily sending quota exceeded');
-    } else if (error.name === 'InvalidParameterValueException') {
-      console.error('  Reason: Invalid parameter - check email addresses and content');
-    }
-
-    console.error('  Full error details:', error);
-    return null;
-  }
-};
-
-// SendGrid email sending (fallback option)
+// SendGrid email sending (primary method)
 const sendEmailViaSendGrid = async (to, subject, html) => {
   if (!process.env.SENDGRID_API_KEY) {
+    console.log('⚠️ SendGrid API key not configured');
     return null;
   }
 
   try {
     console.log('📧 Using SendGrid for email delivery...');
+    console.log('  From:', process.env.SMTP_FROM || 'noreply@pongsshipping.com');
+    console.log('  To:', to);
+    console.log('  Subject:', subject);
 
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
@@ -169,103 +24,87 @@ const sendEmailViaSendGrid = async (to, subject, html) => {
     };
 
     const result = await sgMail.send(msg);
-    console.log('✅ SendGrid email sent successfully:', result[0].statusCode);
+
+    console.log('✅ SendGrid email sent successfully!');
+    console.log('  Status Code:', result[0].statusCode);
+    console.log('  Message ID:', result[0].headers['x-message-id']);
+
     return true;
   } catch (error) {
     console.error('❌ SendGrid failed:', error.message);
+
+    // Handle specific SendGrid errors
+    if (error.response) {
+      console.error('  Status Code:', error.response.statusCode);
+      console.error('  Error Body:', error.response.body);
+
+      if (error.response.body && error.response.body.errors) {
+        error.response.body.errors.forEach((err, index) => {
+          console.error(`  Error ${index + 1}:`, err.message);
+        });
+      }
+    }
+
     return null;
   }
 };
 
-// Environment-aware transporter creation
-const createTransporter = async () => {
-  console.log('🔧 Email Configuration Debug:');
-  console.log('  Environment:', process.env.NODE_ENV);
-  console.log('  SMTP_USER:', process.env.SMTP_USER);
-  console.log('  SMTP_PASS:', process.env.SMTP_PASS ? '[SET]' : '[NOT SET]');
-
+// Gmail SMTP email sending (fallback method)
+const sendEmailViaGmailSMTP = async (to, subject, html) => {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    console.warn('SMTP credentials not found. Email functionality will be disabled.');
+    console.log('⚠️ Gmail SMTP credentials not configured');
     return null;
   }
 
-  // For local development, use simple Gmail SMTP
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🏠 Using local Gmail SMTP configuration...');
+  try {
+    console.log('📧 Using Gmail SMTP for email delivery...');
+    console.log('  SMTP User:', process.env.SMTP_USER);
+    console.log('  To:', to);
 
-    const config = {
+    // Create Gmail SMTP transporter
+    const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        pass: process.env.SMTP_PASS, // App password, not regular password
       },
+    });
+
+    const mailOptions = {
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to,
+      subject,
+      html
     };
 
-    return nodemailer.createTransport(config);
-  }
+    console.log('🔍 Testing SMTP connection...');
+    await transporter.verify();
+    console.log('✅ SMTP connection verified');
 
-  // For production, use Gmail API (OAuth2) to bypass Railway SMTP blocking
-  console.log('☁️ Using production Gmail API configuration...');
+    console.log('🚀 Sending email via Gmail SMTP...');
+    const info = await transporter.sendMail(mailOptions);
 
-  // Try OAuth2 Gmail first
-  try {
-    const accessToken = await createGmailOAuth2();
+    console.log('✅ Gmail SMTP email sent successfully!');
+    console.log('  Message ID:', info.messageId);
+    console.log('  Response:', info.response);
 
-    if (accessToken) {
-      console.log('✅ Using Gmail OAuth2 API configuration...');
+    return true;
+  } catch (error) {
+    console.error('❌ Gmail SMTP failed:', error.message);
+    console.error('  Error code:', error.code);
 
-      const config = {
-        service: 'gmail',
-        auth: {
-          type: 'OAuth2',
-          user: process.env.SMTP_USER,
-          clientId: process.env.GMAIL_CLIENT_ID,
-          clientSecret: process.env.GMAIL_CLIENT_SECRET,
-          refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-          accessToken: accessToken,
-        },
-      };
-
-      return nodemailer.createTransport(config);
-    } else {
-      console.error('❌ OAuth2 access token is null. Check your Gmail API credentials.');
+    // Helpful error messages
+    if (error.code === 'EAUTH') {
+      console.error('  Authentication failed. Please check:');
+      console.error('  - SMTP_USER is correct');
+      console.error('  - SMTP_PASS is an App Password (not regular password)');
+      console.error('  - 2FA is enabled on the Google account');
+      console.error('  - Less secure app access is enabled (if not using App Password)');
+    } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT') {
+      console.error('  Connection failed. SMTP might be blocked by hosting provider.');
     }
-  } catch (error) {
-    console.error('❌ OAuth2 setup failed:', error.message);
-    console.error('  Make sure these environment variables are set:');
-    console.error('  - GMAIL_CLIENT_ID');
-    console.error('  - GMAIL_CLIENT_SECRET');
-    console.error('  - GMAIL_REFRESH_TOKEN');
-  }
 
-  // Railway blocks SMTP, so we cannot fallback to app password
-  console.error('❌ Gmail API setup failed. Email functionality will be disabled in production.');
-  console.error('   Railway blocks SMTP connections, so Gmail API with OAuth2 is required.');
-  return null;
-};
-
-// Get or create transporter with caching
-const getTransporter = async () => {
-  // If we already have a cached transporter, return it
-  if (transporterCache) {
-    return transporterCache;
-  }
-
-  // If we're already creating a transporter, wait for it
-  if (transporterPromise) {
-    return await transporterPromise;
-  }
-
-  // Create new transporter
-  transporterPromise = createTransporter();
-
-  try {
-    transporterCache = await transporterPromise;
-    transporterPromise = null;
-    return transporterCache;
-  } catch (error) {
-    transporterPromise = null;
-    throw error;
+    return null;
   }
 };
 
@@ -993,169 +832,63 @@ const emailTemplates = {
   })
 };
 
-// Send email via nodemailer transporter
-const sendViaTransporter = async (transporter, to, subject, html) => {
-  try {
-    const mailOptions = {
-      from: process.env.SMTP_FROM || 'noreply@pongsshipping.com',
-      to,
-      subject,
-      html
-    };
-
-    console.log('📧 Sending via transporter...');
-    const info = await transporter.sendMail(mailOptions);
-
-    console.log('✅ Email sent successfully via transporter!');
-    console.log('  Message ID:', info.messageId);
-    console.log('  Response:', info.response);
-
-    return true;
-  } catch (error) {
-    console.error('❌ Transporter send failed:', error.message);
-    return false;
-  }
-};
-
+// Main send email function with fallback logic
 const sendEmail = async (to, subject, html) => {
   console.log('📤 Attempting to send email...');
   console.log('  To:', to);
   console.log('  Subject:', subject);
 
-  // Try Amazon SES first (recommended method for production)
-  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY && process.env.AWS_REGION) {
-    console.log('🔄 Attempting Amazon SES...');
-    const sesResult = await sendEmailViaSES(to, subject, html);
-    if (sesResult) {
-      return true;
-    }
-    console.log('⚠️ Amazon SES failed, trying fallback services...');
-  } else {
-    console.log('⚠️ Amazon SES credentials not configured, trying alternatives...');
-  }
-
-  // Try Gmail API as fallback (if configured)
-  try {
-    const transporter = await getTransporter();
-    if (transporter && transporter !== 'SENDGRID') {
-      console.log('🔄 Attempting Gmail API...');
-      const result = await sendViaTransporter(transporter, to, subject, html);
-      if (result) {
-        return true;
-      }
-      console.log('⚠️ Gmail API failed, trying remaining services...');
-    }
-  } catch (error) {
-    console.log('⚠️ Gmail API error, trying remaining services...', error.message);
-  }
-
-  // Try SendGrid as last resort
+  // Try SendGrid first (primary method)
   if (process.env.SENDGRID_API_KEY) {
-    console.log('🔄 Attempting SendGrid...');
+    console.log('🔄 Attempting SendGrid (Primary)...');
     const sendGridResult = await sendEmailViaSendGrid(to, subject, html);
     if (sendGridResult) {
       return true;
     }
-    console.log('⚠️ SendGrid failed...');
+    console.log('⚠️ SendGrid failed, trying fallback...');
+  } else {
+    console.log('⚠️ SendGrid API key not configured, trying Gmail SMTP...');
+  }
+
+  // Try Gmail SMTP as fallback
+  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    console.log('🔄 Attempting Gmail SMTP (Fallback)...');
+    const gmailResult = await sendEmailViaGmailSMTP(to, subject, html);
+    if (gmailResult) {
+      return true;
+    }
+    console.log('⚠️ Gmail SMTP failed...');
+  } else {
+    console.log('⚠️ Gmail SMTP credentials not configured...');
   }
 
   console.error('❌ All email services failed. Email not sent to:', to);
+  console.error('   Please configure either:');
+  console.error('   1. SENDGRID_API_KEY (recommended)');
+  console.error('   2. SMTP_USER and SMTP_PASS (Gmail App Password)');
   return false;
-
-  try {
-    // Fallback to transporter (Gmail API or SMTP for development)
-    const transporter = await getTransporter();
-
-    if (!transporter) {
-      console.warn('❌ Email transporter not available. Email not sent to:', to);
-      return false;
-    }
-
-    console.log('✅ Transporter available, preparing email...');
-
-    const mailOptions = {
-      from: process.env.SMTP_FROM || 'noreply@pongsshipping.com',
-      to,
-      subject,
-      html
-    };
-
-    console.log('📧 Mail options:', {
-      from: mailOptions.from,
-      to: mailOptions.to,
-      subject: mailOptions.subject,
-      htmlLength: html ? html.length : 0
-    });
-
-    // Test connection first (with timeout)
-    console.log('🔍 Testing SMTP connection...');
-    const verifyPromise = transporter.verify();
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('SMTP verification timeout')), 10000)
-    );
-
-    try {
-      await Promise.race([verifyPromise, timeoutPromise]);
-      console.log('✅ SMTP connection verified successfully');
-    } catch (verifyError) {
-      console.warn('⚠️ SMTP verification failed, but continuing with send attempt:', verifyError.message);
-    }
-
-    // Send the email (with timeout)
-    console.log('🚀 Sending email...');
-    const sendPromise = transporter.sendMail(mailOptions);
-    const sendTimeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Email send timeout')), 30000)
-    );
-
-    const info = await Promise.race([sendPromise, sendTimeoutPromise]);
-
-    console.log('✅ Email sent successfully!');
-    console.log('  Message ID:', info.messageId);
-    console.log('  Response:', info.response);
-    console.log('  Accepted:', info.accepted);
-    console.log('  Rejected:', info.rejected);
-    console.log('  Pending:', info.pending);
-    console.log('  Envelope:', info.envelope);
-
-    // Check if email was actually accepted
-    if (info.rejected && info.rejected.length > 0) {
-      console.warn('⚠️ Some recipients were rejected:', info.rejected);
-    }
-
-    if (info.accepted && info.accepted.length === 0) {
-      console.warn('⚠️ No recipients were accepted for delivery');
-    }
-
-    return true;
-  } catch (error) {
-    console.error('❌ Error sending email:');
-    console.error('  Error type:', error.name);
-    console.error('  Error message:', error.message);
-    console.error('  Error code:', error.code);
-    console.error('  Full error:', error);
-
-    // Clear the cache if there's a connection error
-    if (error.message.includes('connect') || error.message.includes('timeout')) {
-      console.log('🔄 Clearing transporter cache due to connection error');
-      transporterCache = null;
-    }
-
-    return false;
-  }
 };
 
 // Test email function for debugging
 const testEmail = async (to = 'test@example.com') => {
   console.log('🧪 Testing email functionality...');
+  console.log('  Configured services:');
+  console.log('    - SendGrid:', process.env.SENDGRID_API_KEY ? '✅ Configured' : '❌ Not configured');
+  console.log('    - Gmail SMTP:', (process.env.SMTP_USER && process.env.SMTP_PASS) ? '✅ Configured' : '❌ Not configured');
 
   const testTemplate = {
     subject: 'Test Email - Pongs Shipping',
     html: `
       <h2>Email Test</h2>
-      <p>This is a test email to verify SMTP configuration.</p>
+      <p>This is a test email to verify email configuration.</p>
       <p>Time: ${new Date().toISOString()}</p>
       <p>Environment: ${process.env.NODE_ENV}</p>
+      <hr>
+      <p><strong>Configuration Status:</strong></p>
+      <ul>
+        <li>SendGrid: ${process.env.SENDGRID_API_KEY ? '✅ Configured' : '❌ Not configured'}</li>
+        <li>Gmail SMTP: ${(process.env.SMTP_USER && process.env.SMTP_PASS) ? '✅ Configured' : '❌ Not configured'}</li>
+      </ul>
     `
   };
 
