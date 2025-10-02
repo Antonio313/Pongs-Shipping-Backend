@@ -70,6 +70,7 @@ const requireAdmin = (req, res, next) => {
 // GET /transfers - Get all transfer lists
 router.get('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    console.log('📦 Fetching all transfers...');
     const query = `
       SELECT
         t.transfer_id,
@@ -80,7 +81,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
         t.updated_at,
         t.created_by,
         u.first_name || ' ' || u.last_name as created_by_name,
-        COUNT(tp.package_id) as package_count
+        COUNT(tp.package_id)::int as package_count
       FROM transfers t
       LEFT JOIN users u ON t.created_by = u.user_id
       LEFT JOIN transfer_packages tp ON t.transfer_id = tp.transfer_id
@@ -89,9 +90,10 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     `;
 
     const result = await pool.query(query);
+    console.log('✅ Transfers fetched:', result.rows.length);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching transfers:', error);
+    console.error('❌ Error fetching transfers:', error);
     res.status(500).json({ message: 'Error fetching transfers' });
   }
 });
@@ -127,6 +129,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req, res) => {
 router.get('/:id/packages', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    console.log('📦 Fetching packages for transfer:', id);
 
     const query = `
       SELECT
@@ -143,13 +146,14 @@ router.get('/:id/packages', authenticateToken, requireAdmin, async (req, res) =>
     `;
 
     const result = await pool.query(query, [id]);
+    console.log('✅ Packages fetched for transfer', id, ':', result.rows.length);
 
     res.json({
       transfer_id: id,
       packages: result.rows
     });
   } catch (error) {
-    console.error('Error fetching transfer packages:', error);
+    console.error('❌ Error fetching transfer packages:', error);
     res.status(500).json({ message: 'Error fetching transfer packages' });
   }
 });
@@ -188,24 +192,22 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 
     await client.query('COMMIT');
 
-    // Track staff performance for transfer creation
-    if (req.user.role === 'A' || req.user.role === 'S') {
-      // Log the action
-      await logStaffAction(
-        req.user.userId,
-        'transfer_creation',
-        'transfer',
-        transferId,
-        `Created transfer list to ${destination} with ${packages.length} packages`,
-        0,
-        { destination, packageCount: packages.length, packages, notes }
-      );
+    // Track staff performance for transfer creation (for ALL staff roles)
+    // Log the action
+    await logStaffAction(
+      req.user.userId,
+      'transfer_creation',
+      'transfer',
+      transferId,
+      `Created transfer list to ${destination} with ${packages.length} packages`,
+      0,
+      { destination, packageCount: packages.length, packages, notes }
+    );
 
-      // Update staff performance metrics
-      await updateStaffPerformance(req.user.userId, {
-        transfers_created: 1
-      });
-    }
+    // Update staff performance metrics
+    await updateStaffPerformance(req.user.userId, {
+      transfers_created: 1
+    });
 
     res.status(201).json({
       message: 'Transfer list created successfully',
@@ -244,6 +246,17 @@ router.patch('/:id/status', authenticateToken, requireAdmin, async (req, res) =>
       return res.status(404).json({ message: 'Transfer not found' });
     }
 
+    // Log the action
+    await logStaffAction(
+      req.user.userId,
+      'transfer_status_update',
+      'transfer',
+      id,
+      `Updated transfer ${id} status to ${status}`,
+      0,
+      { previousStatus: result.rows[0].status, newStatus: status }
+    );
+
     res.json({
       message: 'Transfer status updated successfully',
       transfer: result.rows[0]
@@ -280,6 +293,123 @@ router.patch('/:transferId/packages/:packageId/checkoff', authenticateToken, req
   } catch (error) {
     console.error('Error updating package checkoff:', error);
     res.status(500).json({ message: 'Error updating package checkoff status' });
+  }
+});
+
+// POST /transfers/:transferId/packages - Add packages to an existing transfer
+router.post('/:transferId/packages', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { transferId } = req.params;
+    const { packages } = req.body;
+
+    if (!packages || packages.length === 0) {
+      return res.status(400).json({ message: 'Packages array is required' });
+    }
+
+    console.log('➕ Adding packages to transfer:', transferId, 'Packages:', packages);
+
+    // Add packages to transfer
+    for (const packageId of packages) {
+      await pool.query(
+        `INSERT INTO transfer_packages (transfer_id, package_id, checked_off, added_at)
+         VALUES ($1, $2, false, NOW())
+         ON CONFLICT (transfer_id, package_id) DO NOTHING`,
+        [transferId, packageId]
+      );
+    }
+
+    console.log('✅ Packages added to transfer:', transferId);
+
+    res.json({
+      message: 'Packages added to transfer successfully',
+      transfer_id: transferId,
+      packages_added: packages.length
+    });
+  } catch (error) {
+    console.error('❌ Error adding packages to transfer:', error);
+    res.status(500).json({ message: 'Error adding packages to transfer' });
+  }
+});
+
+// DELETE /transfers/:transferId/packages/:packageId - Remove package from transfer
+router.delete('/:transferId/packages/:packageId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { transferId, packageId } = req.params;
+
+    console.log('🗑️ Removing package', packageId, 'from transfer:', transferId);
+
+    const result = await pool.query(
+      'DELETE FROM transfer_packages WHERE transfer_id = $1 AND package_id = $2 RETURNING *',
+      [transferId, packageId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Package not found in this transfer' });
+    }
+
+    console.log('✅ Package removed from transfer:', transferId);
+
+    res.json({
+      message: 'Package removed from transfer successfully',
+      transfer_package: result.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Error removing package from transfer:', error);
+    res.status(500).json({ message: 'Error removing package from transfer' });
+  }
+});
+
+// PATCH /transfers/:id - Update transfer details (destination, notes)
+router.patch('/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { destination, notes } = req.body;
+
+    console.log('✏️ Updating transfer:', id, 'Data:', { destination, notes });
+
+    const updates = [];
+    const values = [];
+    let paramCount = 1;
+
+    if (destination !== undefined) {
+      updates.push(`destination = $${paramCount++}`);
+      values.push(destination);
+    }
+
+    if (notes !== undefined) {
+      updates.push(`notes = $${paramCount++}`);
+      values.push(notes);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ message: 'No fields to update' });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(id);
+
+    const query = `
+      UPDATE transfers
+      SET ${updates.join(', ')}
+      WHERE transfer_id = $${paramCount}
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Transfer not found' });
+    }
+
+    console.log('✅ Transfer updated:', id);
+
+    res.json({
+      message: 'Transfer updated successfully',
+      transfer: result.rows[0]
+    });
+  } catch (error) {
+    console.error('❌ Error updating transfer:', error);
+    res.status(500).json({ message: 'Error updating transfer' });
   }
 });
 

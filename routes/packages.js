@@ -222,27 +222,27 @@ router.post('/confirm-prealert/:prealertId', authenticateToken, requireRole(['A'
       // Don't fail the request if email fails - log it and continue
     }
 
-    // Track staff performance for prealert confirmation
+    // Track staff performance for prealert confirmation (ALL staff roles)
+    const packageCost = cost || prealert.price || 0;
+
+    // Log the action (no revenue impact yet - revenue only tracked on delivery)
+    await logStaffAction(
+      req.user.user_id,
+      'prealert_confirmation',
+      'prealert',
+      req.params.prealertId,
+      `Confirmed prealert and created package ${newPackage.tracking_number}`,
+      0, // No revenue impact - revenue is only generated on delivery
+      {
+        prealertId: req.params.prealertId,
+        packageId: newPackage.package_id,
+        trackingNumber: newPackage.tracking_number,
+        cost: packageCost
+      }
+    );
+
+    // Update staff performance metrics (no revenue tracked yet) - for A and S roles only
     if (req.user.role === 'A' || req.user.role === 'S') {
-      const packageCost = cost || prealert.price || 0;
-
-      // Log the action (no revenue impact yet - revenue only tracked on delivery)
-      await logStaffAction(
-        req.user.user_id,
-        'prealert_confirmation',
-        'prealert',
-        req.params.prealertId,
-        `Confirmed prealert and created package ${newPackage.tracking_number}`,
-        0, // No revenue impact - revenue is only generated on delivery
-        {
-          prealertId: req.params.prealertId,
-          packageId: newPackage.package_id,
-          trackingNumber: newPackage.tracking_number,
-          cost: packageCost
-        }
-      );
-
-      // Update staff performance metrics (no revenue tracked yet)
       await updateStaffPerformance(req.user.user_id, {
         packages_processed: 1,
         prealerts_confirmed: 1,
@@ -251,10 +251,18 @@ router.post('/confirm-prealert/:prealertId', authenticateToken, requireRole(['A'
       });
     }
 
+    // Include customer info in response for PDF generation
     res.status(201).json({
       message: 'PreAlert confirmed and package created successfully',
       package: newPackage,
-      prealert: updatedPreAlert
+      prealert: updatedPreAlert,
+      customer: {
+        user_id: packageWithUser.user_id,
+        first_name: packageWithUser.first_name,
+        last_name: packageWithUser.last_name,
+        email: packageWithUser.email,
+        branch: packageWithUser.branch
+      }
     });
   } catch (error) {
     console.error('Error confirming prealert:', error);
@@ -267,13 +275,24 @@ router.put('/:id', authenticateToken, requireRole(['A', 'S', 'H']), async (req, 
   try {
 
     const package = await Package.findById(req.params.id);
-    
+
     if (!package) {
       return res.status(404).json({ message: 'Package not found' });
     }
 
     const updatedPackage = await Package.update(req.params.id, req.body);
-    
+
+    // Log the package update action
+    await logStaffAction(
+      req.user.user_id,
+      'package_status_update',
+      'package',
+      req.params.id,
+      `Updated package ${package.tracking_number}`,
+      0,
+      { updates: req.body }
+    );
+
     res.status(200).json({
       message: 'Package updated successfully',
       package: updatedPackage
