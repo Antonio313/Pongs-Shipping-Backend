@@ -410,9 +410,9 @@ router.delete('/staff/:id', authenticateToken, requireSuperAdmin, async (req, re
   try {
     const { id } = req.params;
 
-    // Get staff info before deletion
+    // Get staff info before deletion (all staff roles: A, S, T, H, D, F)
     const staffInfo = await pool.query(
-      'SELECT first_name, last_name, email, role FROM Users WHERE user_id = $1 AND role IN (\'A\', \'S\')',
+      'SELECT first_name, last_name, email, role FROM Users WHERE user_id = $1 AND role IN (\'A\', \'S\', \'T\', \'H\', \'D\', \'F\')',
       [id]
     );
 
@@ -433,13 +433,24 @@ router.delete('/staff/:id', authenticateToken, requireSuperAdmin, async (req, re
     // Delete the staff member
     await pool.query('DELETE FROM Users WHERE user_id = $1', [id]);
 
+    // Get role display name
+    const roleNames = {
+      'A': 'Admin',
+      'S': 'Super Admin',
+      'T': 'Cashier',
+      'H': 'Package Handler',
+      'D': 'Transfer Personnel',
+      'F': 'Front Desk'
+    };
+    const roleName = roleNames[staff.role] || 'Staff';
+
     // Log the action
     await logStaffAction(
       req.user.userId,
       'staff_deleted',
       'user',
       id,
-      `Deleted ${staff.role === 'A' ? 'admin' : 'super admin'} staff member: ${staff.first_name} ${staff.last_name}`,
+      `Deleted ${roleName} staff member: ${staff.first_name} ${staff.last_name}`,
       0,
       { email: staff.email, role: staff.role }
     );

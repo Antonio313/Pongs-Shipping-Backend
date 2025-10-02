@@ -287,6 +287,43 @@ router.get('/profile/stats', authenticateToken, requireAdmin, async (req, res) =
       };
 
       console.log('✅ Final package handler stats:', stats);
+    } else if (staffRole === 'T') {
+      // Cashier - Focuses on deliveries and payments
+      console.log('📊 Fetching cashier stats for user_id:', staffId);
+
+      const cashierStatsQuery = `
+        SELECT
+          COUNT(d.delivery_id)::int as deliveries_processed,
+          COALESCE(SUM(p.finalcost), 0)::numeric as total_revenue_collected,
+          COUNT(DISTINCT p.user_id)::int as customers_served,
+          COUNT(CASE WHEN d.delivered_at >= NOW() - INTERVAL '7 days' THEN 1 END)::int as deliveries_this_week,
+          COUNT(CASE WHEN d.delivered_at >= NOW() - INTERVAL '30 days' THEN 1 END)::int as deliveries_this_month,
+          CASE
+            WHEN COUNT(d.delivery_id) > 0 THEN COALESCE(SUM(p.finalcost), 0) / COUNT(d.delivery_id)
+            ELSE 0
+          END::numeric as avg_transaction_value
+        FROM Deliveries d
+        JOIN Packages p ON d.package_id = p.package_id
+        WHERE d.delivered_by = $1
+      `;
+      const cashierStatsResult = await pool.query(cashierStatsQuery, [staffId]);
+      const cashierStats = cashierStatsResult.rows[0];
+
+      console.log('💰 Cashier stats:', cashierStats);
+
+      stats = {
+        ...stats,
+        deliveries_processed: cashierStats.deliveries_processed || 0,
+        total_revenue_collected: parseFloat(cashierStats.total_revenue_collected) || 0,
+        customers_served: cashierStats.customers_served || 0,
+        deliveries_this_week: cashierStats.deliveries_this_week || 0,
+        deliveries_this_month: cashierStats.deliveries_this_month || 0,
+        avg_transaction_value: parseFloat(cashierStats.avg_transaction_value) || 0,
+        role_display: 'Cashier',
+        primary_focus: 'Deliveries & Payments'
+      };
+
+      console.log('✅ Final cashier stats:', stats);
     }
 
     console.log('📤 Sending stats response');

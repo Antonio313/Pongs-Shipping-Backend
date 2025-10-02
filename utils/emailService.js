@@ -1,15 +1,4 @@
-const nodemailer = require('nodemailer');
-
-// Create transporter
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: process.env.SMTP_PORT || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const { sendEmail } = require('../config/email');
 
 // Delivery notification email template
 const createDeliveryNotificationTemplate = ({ firstName, lastName, trackingNumber, deliveredAt, receivedBy }) => {
@@ -244,18 +233,18 @@ const sendDeliveryNotification = async ({ email, firstName, lastName, trackingNu
       receivedBy
     });
 
-    const mailOptions = {
-      from: `"Pong's Shipping Company" <${process.env.SMTP_USER}>`,
-      to: email,
-      subject: template.subject,
-      html: template.html
-    };
+    console.log('📧 Sending delivery notification email to:', email);
+    const result = await sendEmail(email, template.subject, template.html);
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log('Delivery notification email sent successfully:', result.messageId);
-    return { success: true, messageId: result.messageId };
+    if (result) {
+      console.log('✅ Delivery notification email sent successfully');
+      return { success: true };
+    } else {
+      console.error('❌ Failed to send delivery notification email');
+      throw new Error('All email services failed');
+    }
   } catch (error) {
-    console.error('Error sending delivery notification email:', error);
+    console.error('❌ Error sending delivery notification email:', error);
     throw error;
   }
 };
