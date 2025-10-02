@@ -12,16 +12,15 @@ const authenticateToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('✅ Auth middleware: Token decoded successfully', { userId: decoded.userId, email: decoded.email, role: decoded.role });
+ 
 
     const user = await User.findById(decoded.userId);
 
     if (!user) {
-      console.log('❌ Auth middleware: User not found in database for userId:', decoded.userId);
+
       return res.status(403).json({ message: 'Invalid token - user not found' });
     }
 
-    console.log('✅ Auth middleware: User found', { user_id: user.user_id, email: user.email, role: user.role });
     req.user = user;
     next();
   } catch (error) {

@@ -412,4 +412,258 @@ router.put('/profile/password', authenticateToken, requireAdmin, async (req, res
   }
 });
 
+// GET /admin/profile/stats/download - Download daily statistics for current user
+router.get('/profile/stats/download', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const staffId = req.user.user_id;
+    const staffRole = req.user.role;
+    const { date } = req.query; // Optional date parameter (YYYY-MM-DD)
+
+    // Use provided date or default to today
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    console.log('📥 Downloading daily stats for user_id:', staffId, 'role:', staffRole, 'date:', targetDate);
+
+    // Get staff basic info
+    const staffInfo = await pool.query(
+      'SELECT first_name, last_name, email, role FROM Users WHERE user_id = $1',
+      [staffId]
+    );
+
+    if (staffInfo.rows.length === 0) {
+      return res.status(404).json({ message: 'Staff member not found' });
+    }
+
+    const staff = staffInfo.rows[0];
+    const roleNames = {
+      'A': 'Admin',
+      'S': 'Super Admin',
+      'T': 'Cashier',
+      'H': 'Package Handler',
+      'D': 'Transfer Personnel',
+      'F': 'Front Desk'
+    };
+
+    let dailyStats = {};
+
+    // Get role-specific daily statistics
+    if (staffRole === 'T') {
+      // Cashier daily stats
+      const cashierDailyQuery = `
+        SELECT
+          COUNT(d.delivery_id)::int as deliveries_processed,
+          COALESCE(SUM(p.finalcost), 0)::numeric as total_revenue_collected,
+          COUNT(DISTINCT p.user_id)::int as customers_served,
+          CASE
+            WHEN COUNT(d.delivery_id) > 0 THEN COALESCE(SUM(p.finalcost), 0) / COUNT(d.delivery_id)
+            ELSE 0
+          END::numeric as avg_transaction_value
+        FROM Deliveries d
+        JOIN Packages p ON d.package_id = p.package_id
+        WHERE d.delivered_by = $1
+        AND DATE(d.delivered_at) = $2
+      `;
+      const result = await pool.query(cashierDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staffRole === 'H') {
+      // Package Handler daily stats
+      const handlerDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
+          COUNT(CASE WHEN action_type = 'package_created' THEN 1 END)::int as packages_created,
+          COUNT(CASE WHEN action_type = 'package_status_update' THEN 1 END)::int as packages_updated,
+          COUNT(CASE WHEN action_type LIKE '%transfer%' THEN 1 END)::int as transfers_managed
+        FROM Staff_Actions_Log
+        WHERE staff_id = $1
+        AND DATE(created_at) = $2
+      `;
+      const result = await pool.query(handlerDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staffRole === 'D') {
+      // Transfer Personnel daily stats
+      const transferDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN t.status = 'created' THEN 1 END)::int as transfers_created,
+          COUNT(CASE WHEN t.status = 'completed' THEN 1 END)::int as transfers_completed,
+          COUNT(tp.package_id)::int as total_packages_in_transfers
+        FROM Transfers t
+        LEFT JOIN Transfer_Packages tp ON t.transfer_id = tp.transfer_id
+        WHERE t.created_by = $1
+        AND DATE(t.created_at) = $2
+      `;
+      const result = await pool.query(transferDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staffRole === 'F') {
+      // Front Desk daily stats
+      const frontDeskDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
+          COUNT(DISTINCT CAST(metadata->>'customerId' AS INTEGER))::int as customers_assisted,
+          COUNT(DISTINCT staff_id)::int as unique_customers_helped
+        FROM Staff_Actions_Log
+        WHERE staff_id = $1
+        AND DATE(created_at) = $2
+      `;
+      const result = await pool.query(frontDeskDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staffRole === 'A' || staffRole === 'S') {
+      // Admin/Super Admin daily stats
+      const adminDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN action_type = 'delivery_processed' THEN 1 END)::int as deliveries_processed,
+          COUNT(CASE WHEN action_type = 'package_created' THEN 1 END)::int as packages_created,
+          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
+          COUNT(CASE WHEN action_type = 'transfer_created' THEN 1 END)::int as transfers_created,
+          COALESCE(SUM(CASE WHEN action_type = 'delivery_processed' THEN revenue_impact ELSE 0 END), 0)::numeric as total_revenue_collected
+        FROM Staff_Actions_Log
+        WHERE staff_id = $1
+        AND DATE(created_at) = $2
+      `;
+      const result = await pool.query(adminDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    }
+
+    // Return as JSON for download
+    res.json({
+      staff_name: `${staff.first_name} ${staff.last_name}`,
+      staff_email: staff.email,
+      role: roleNames[staff.role] || 'Staff',
+      date: targetDate,
+      statistics: dailyStats,
+      generated_at: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error downloading daily stats:', error);
+    res.status(500).json({ message: 'Error downloading statistics' });
+  }
+});
+
+// GET /admin/profile/stats/download/:staffId - Download daily statistics for specific staff (Super Admin only)
+router.get('/profile/stats/download/:staffId', authenticateToken, async (req, res) => {
+  try {
+    // Only super admins can download other staff's statistics
+    if (req.user.role !== 'S') {
+      return res.status(403).json({ message: 'Access denied. Super Admin privileges required.' });
+    }
+
+    const staffId = req.params.staffId;
+    const { date } = req.query; // Optional date parameter (YYYY-MM-DD)
+
+    // Use provided date or default to today
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    console.log('📥 Super Admin downloading daily stats for staff_id:', staffId, 'date:', targetDate);
+
+    // Get staff basic info
+    const staffInfo = await pool.query(
+      'SELECT first_name, last_name, email, role FROM Users WHERE user_id = $1 AND role IN (\'A\', \'S\', \'T\', \'H\', \'D\', \'F\')',
+      [staffId]
+    );
+
+    if (staffInfo.rows.length === 0) {
+      return res.status(404).json({ message: 'Staff member not found' });
+    }
+
+    const staff = staffInfo.rows[0];
+    const roleNames = {
+      'A': 'Admin',
+      'S': 'Super Admin',
+      'T': 'Cashier',
+      'H': 'Package Handler',
+      'D': 'Transfer Personnel',
+      'F': 'Front Desk'
+    };
+
+    let dailyStats = {};
+
+    // Get role-specific daily statistics
+    if (staff.role === 'T') {
+      const cashierDailyQuery = `
+        SELECT
+          COUNT(d.delivery_id)::int as deliveries_processed,
+          COALESCE(SUM(p.finalcost), 0)::numeric as total_revenue_collected,
+          COUNT(DISTINCT p.user_id)::int as customers_served,
+          CASE
+            WHEN COUNT(d.delivery_id) > 0 THEN COALESCE(SUM(p.finalcost), 0) / COUNT(d.delivery_id)
+            ELSE 0
+          END::numeric as avg_transaction_value
+        FROM Deliveries d
+        JOIN Packages p ON d.package_id = p.package_id
+        WHERE d.delivered_by = $1
+        AND DATE(d.delivered_at) = $2
+      `;
+      const result = await pool.query(cashierDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staff.role === 'H') {
+      const handlerDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
+          COUNT(CASE WHEN action_type = 'package_created' THEN 1 END)::int as packages_created,
+          COUNT(CASE WHEN action_type = 'package_status_update' THEN 1 END)::int as packages_updated,
+          COUNT(CASE WHEN action_type LIKE '%transfer%' THEN 1 END)::int as transfers_managed
+        FROM Staff_Actions_Log
+        WHERE staff_id = $1
+        AND DATE(created_at) = $2
+      `;
+      const result = await pool.query(handlerDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staff.role === 'D') {
+      const transferDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN t.status = 'created' THEN 1 END)::int as transfers_created,
+          COUNT(CASE WHEN t.status = 'completed' THEN 1 END)::int as transfers_completed,
+          COUNT(tp.package_id)::int as total_packages_in_transfers
+        FROM Transfers t
+        LEFT JOIN Transfer_Packages tp ON t.transfer_id = tp.transfer_id
+        WHERE t.created_by = $1
+        AND DATE(t.created_at) = $2
+      `;
+      const result = await pool.query(transferDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staff.role === 'F') {
+      const frontDeskDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
+          COUNT(DISTINCT CAST(metadata->>'customerId' AS INTEGER))::int as customers_assisted,
+          COUNT(DISTINCT staff_id)::int as unique_customers_helped
+        FROM Staff_Actions_Log
+        WHERE staff_id = $1
+        AND DATE(created_at) = $2
+      `;
+      const result = await pool.query(frontDeskDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    } else if (staff.role === 'A' || staff.role === 'S') {
+      const adminDailyQuery = `
+        SELECT
+          COUNT(CASE WHEN action_type = 'delivery_processed' THEN 1 END)::int as deliveries_processed,
+          COUNT(CASE WHEN action_type = 'package_created' THEN 1 END)::int as packages_created,
+          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
+          COUNT(CASE WHEN action_type = 'transfer_created' THEN 1 END)::int as transfers_created,
+          COALESCE(SUM(CASE WHEN action_type = 'delivery_processed' THEN revenue_impact ELSE 0 END), 0)::numeric as total_revenue_collected
+        FROM Staff_Actions_Log
+        WHERE staff_id = $1
+        AND DATE(created_at) = $2
+      `;
+      const result = await pool.query(adminDailyQuery, [staffId, targetDate]);
+      dailyStats = result.rows[0];
+    }
+
+    // Return as JSON for download
+    res.json({
+      staff_name: `${staff.first_name} ${staff.last_name}`,
+      staff_email: staff.email,
+      role: roleNames[staff.role] || 'Staff',
+      date: targetDate,
+      statistics: dailyStats,
+      downloaded_by: `${req.user.first_name} ${req.user.last_name}`,
+      generated_at: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error downloading staff daily stats:', error);
+    res.status(500).json({ message: 'Error downloading statistics' });
+  }
+});
+
 module.exports = router;
