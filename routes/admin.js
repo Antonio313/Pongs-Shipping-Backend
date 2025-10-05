@@ -10,12 +10,12 @@ router.get('/customers', authenticateToken, requireAdmin, async (req, res) => {
   try {
 
     const result = await pool.query(
-      `SELECT u.user_id, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch, 
+      `SELECT u.user_id, u.customer_number, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch,
               u.is_verified, u.created_at,
               COUNT(p.prealert_id) as prealert_count
        FROM users u
        LEFT JOIN prealerts p ON u.user_id = p.user_id
-       WHERE u.role = 'C' 
+       WHERE u.role = 'C'
        GROUP BY u.user_id
        ORDER BY u.created_at DESC`
     );
@@ -35,9 +35,9 @@ router.get('/customers/:id', authenticateToken, requireAdmin, async (req, res) =
     
     // Get customer details
     const customerResult = await pool.query(
-      `SELECT user_id, first_name, last_name, email, phone, address, branch, 
-              is_verified, created_at 
-       FROM users 
+      `SELECT user_id, customer_number, first_name, last_name, email, phone, address, branch,
+              is_verified, created_at
+       FROM users
        WHERE user_id = $1 AND role = 'C'`,
       [id]
     );
@@ -48,9 +48,9 @@ router.get('/customers/:id', authenticateToken, requireAdmin, async (req, res) =
     
     // Get customer's pre-alerts
     const preAlertsResult = await pool.query(
-      `SELECT prealert_id, user_id, description, price, invoice_url, status, created_at
-       FROM prealerts 
-       WHERE user_id = $1 
+      `SELECT prealert_id, user_id, description, price, invoice_url, status, created_at, tracking_number, carrier
+       FROM prealerts
+       WHERE user_id = $1
        ORDER BY created_at DESC`,
       [id]
     );

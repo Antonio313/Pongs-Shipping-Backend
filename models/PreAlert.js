@@ -5,7 +5,7 @@ const PreAlert = {
   findByUserId: async (userId) => {
     try {
       const result = await pool.query(
-        `SELECT pa.*, p.tracking_number, p.status as package_status
+        `SELECT pa.*, p.tracking_number as package_tracking_number, p.status as package_status
          FROM prealerts pa
          LEFT JOIN packages p ON pa.package_id = p.package_id
          WHERE pa.user_id = $1
@@ -22,7 +22,7 @@ const PreAlert = {
   findById: async (prealertId) => {
     try {
       const result = await pool.query(
-        `SELECT pa.*, p.tracking_number, p.status as package_status,
+        `SELECT pa.*, p.tracking_number as package_tracking_number, p.status as package_status,
                 u.first_name, u.last_name, u.email
          FROM prealerts pa
          LEFT JOIN packages p ON pa.package_id = p.package_id
@@ -40,7 +40,7 @@ const PreAlert = {
   findByStatus: async (status) => {
     try {
       const result = await pool.query(
-        `SELECT pa.*, p.tracking_number, p.status as package_status,
+        `SELECT pa.*, p.tracking_number as package_tracking_number, p.status as package_status,
                 u.first_name, u.last_name, u.email
          FROM prealerts pa
          LEFT JOIN packages p ON pa.package_id = p.package_id
@@ -58,7 +58,7 @@ const PreAlert = {
   // Create a new prealert
 
   create: async (prealertData) => {
-    const { user_id, description, price, invoice_url, s3_key, status } = prealertData;
+    const { user_id, description, price, invoice_url, s3_key, status, tracking_number, carrier } = prealertData;
 
     // More specific validation
     if (!user_id) {
@@ -72,10 +72,10 @@ const PreAlert = {
     try {
       const result = await pool.query(
         `INSERT INTO prealerts
-        (user_id, description, price, invoice_url, s3_key, status)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        (user_id, description, price, invoice_url, s3_key, status, tracking_number, carrier)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *`,
-        [user_id, description.trim(), price || 0, invoice_url || null, s3_key || null, status || 'U']
+        [user_id, description.trim(), price || 0, invoice_url || null, s3_key || null, status || 'U', tracking_number || null, carrier || null]
       );
 
       return result.rows[0];
@@ -87,7 +87,7 @@ const PreAlert = {
 
   // Update prealert
   update: async (prealertId, prealertData) => {
-    const { description, price, invoice_url, s3_key, status, package_id } = prealertData;
+    const { description, price, invoice_url, s3_key, status, package_id, tracking_number, carrier } = prealertData;
 
     try {
       const result = await pool.query(
@@ -98,10 +98,12 @@ const PreAlert = {
              s3_key = COALESCE($4, s3_key),
              status = COALESCE($5, status),
              package_id = COALESCE($6, package_id),
+             tracking_number = COALESCE($7, tracking_number),
+             carrier = COALESCE($8, carrier),
              updated_at = CURRENT_TIMESTAMP
-         WHERE prealert_id = $7
+         WHERE prealert_id = $9
          RETURNING *`,
-        [description, price, invoice_url, s3_key, status, package_id, prealertId]
+        [description, price, invoice_url, s3_key, status, package_id, tracking_number, carrier, prealertId]
       );
 
       return result.rows[0];
@@ -150,7 +152,7 @@ const PreAlert = {
   findAll: async () => {
     try {
       const result = await pool.query(
-        `SELECT pa.*, p.tracking_number, p.status as package_status,
+        `SELECT pa.*, p.tracking_number as package_tracking_number, p.status as package_status,
                 u.first_name, u.last_name, u.email, u.branch
          FROM prealerts pa
          LEFT JOIN packages p ON pa.package_id = p.package_id
@@ -167,7 +169,7 @@ const PreAlert = {
   findByUserIdWithPackages: async (userId) => {
     try {
       const result = await pool.query(
-        `SELECT pa.*, p.tracking_number, p.status as package_status, p.weight, p.cost as package_cost
+        `SELECT pa.*, p.tracking_number as package_tracking_number, p.status as package_status, p.weight, p.cost as package_cost
         FROM prealerts pa
         LEFT JOIN packages p ON pa.package_id = p.package_id
         WHERE pa.user_id = $1

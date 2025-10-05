@@ -53,7 +53,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
 // Create new prealert with receipt upload
 router.post('/', authenticateToken, uploadSingle('receipt'), async (req, res) => {
   try {
-    const { description, price } = req.body;
+    const { description, price, tracking_number, carrier } = req.body;
     let invoice_url = null;
     let s3_key = null;
 
@@ -102,7 +102,9 @@ router.post('/', authenticateToken, uploadSingle('receipt'), async (req, res) =>
       price: priceNumber,
       invoice_url,
       s3_key, // Store S3 key for future operations
-      status: 'U' // Unconfirmed by default
+      status: 'U', // Unconfirmed by default
+      tracking_number: tracking_number || null,
+      carrier: carrier || null
     });
 
     res.status(201).json({

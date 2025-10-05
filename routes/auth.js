@@ -59,6 +59,7 @@ router.post('/register', async (req, res) => {
       message: 'User registered successfully. Please check your email for verification.',
       user: {
         user_id: newUser.user_id,
+        customer_number: newUser.customer_number,
         first_name: newUser.first_name,
         last_name: newUser.last_name,
         email: newUser.email,
@@ -227,6 +228,7 @@ router.post('/login', async (req, res) => {
       message: 'Login successful',
       user: {
         user_id: user.user_id,
+        customer_number: user.customer_number,
         first_name: user.first_name,
         last_name: user.last_name,
         email: user.email,
