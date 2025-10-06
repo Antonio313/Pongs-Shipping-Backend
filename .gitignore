@@ -121,7 +121,7 @@ dist
 *.db-shm
 
 # Database dumps
-# *.sql  # Commented out to allow migration files and dump
+*.sql  # Commented out to allow migration files and dump
 *.dump
 # Allow migration files and database dump
 !migrations/*.sql
