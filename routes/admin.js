@@ -46,12 +46,14 @@ router.get('/customers/:id', authenticateToken, requireAdmin, async (req, res) =
       return res.status(404).json({ message: 'Customer not found' });
     }
     
-    // Get customer's pre-alerts
+    // Get customer's pre-alerts with customer info
     const preAlertsResult = await pool.query(
-      `SELECT prealert_id, user_id, description, price, invoice_url, status, created_at, tracking_number, carrier
-       FROM prealerts
-       WHERE user_id = $1
-       ORDER BY created_at DESC`,
+      `SELECT p.prealert_id, p.user_id, p.description, p.price, p.invoice_url, p.status, p.created_at, p.tracking_number, p.carrier,
+              u.first_name, u.last_name, u.customer_number
+       FROM prealerts p
+       JOIN users u ON p.user_id = u.user_id
+       WHERE p.user_id = $1
+       ORDER BY p.created_at DESC`,
       [id]
     );
     
@@ -423,6 +425,8 @@ router.get('/profile/stats/download', authenticateToken, requireAdmin, async (re
     const targetDate = date || new Date().toISOString().split('T')[0];
 
     console.log('📥 Downloading daily stats for user_id:', staffId, 'role:', staffRole, 'date:', targetDate);
+    console.log('📅 Date parameter received:', date);
+    console.log('📅 Target date being used:', targetDate);
 
     // Get staff basic info
     const staffInfo = await pool.query(
@@ -466,16 +470,13 @@ router.get('/profile/stats/download', authenticateToken, requireAdmin, async (re
       const result = await pool.query(cashierDailyQuery, [staffId, targetDate]);
       dailyStats = result.rows[0];
     } else if (staffRole === 'H') {
-      // Package Handler daily stats
+      // Package Handler daily stats - query from actual tables
       const handlerDailyQuery = `
         SELECT
-          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
-          COUNT(CASE WHEN action_type = 'package_created' THEN 1 END)::int as packages_created,
-          COUNT(CASE WHEN action_type = 'package_status_update' THEN 1 END)::int as packages_updated,
-          COUNT(CASE WHEN action_type LIKE '%transfer%' THEN 1 END)::int as transfers_managed
-        FROM Staff_Actions_Log
-        WHERE staff_id = $1
-        AND DATE(created_at) = $2
+          (SELECT COUNT(*)::int FROM PreAlerts WHERE confirmed_by = $1 AND DATE(confirmed_at) = $2) as prealerts_confirmed,
+          (SELECT COUNT(*)::int FROM Packages WHERE DATE(created_at) = $2) as packages_created,
+          (SELECT COUNT(*)::int FROM PackageTracking WHERE created_by = $1 AND DATE(created_at) = $2) as packages_updated,
+          (SELECT COUNT(*)::int FROM Transfers WHERE created_by = $1 AND DATE(created_at) = $2) as transfers_managed
       `;
       const result = await pool.query(handlerDailyQuery, [staffId, targetDate]);
       dailyStats = result.rows[0];
@@ -494,34 +495,33 @@ router.get('/profile/stats/download', authenticateToken, requireAdmin, async (re
       const result = await pool.query(transferDailyQuery, [staffId, targetDate]);
       dailyStats = result.rows[0];
     } else if (staffRole === 'F') {
-      // Front Desk daily stats
+      // Front Desk daily stats - query from actual tables
       const frontDeskDailyQuery = `
         SELECT
-          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
-          COUNT(DISTINCT CAST(metadata->>'customerId' AS INTEGER))::int as customers_assisted,
-          COUNT(DISTINCT staff_id)::int as unique_customers_helped
-        FROM Staff_Actions_Log
-        WHERE staff_id = $1
-        AND DATE(created_at) = $2
+          (SELECT COUNT(*)::int FROM PreAlerts WHERE confirmed_by = $1 AND DATE(confirmed_at) = $2) as prealerts_confirmed,
+          (SELECT COUNT(DISTINCT user_id)::int FROM PreAlerts WHERE confirmed_by = $1 AND DATE(confirmed_at) = $2) as customers_assisted,
+          (SELECT COUNT(DISTINCT user_id)::int FROM PreAlerts WHERE confirmed_by = $1 AND DATE(confirmed_at) = $2) as unique_customers_helped
       `;
       const result = await pool.query(frontDeskDailyQuery, [staffId, targetDate]);
       dailyStats = result.rows[0];
     } else if (staffRole === 'A' || staffRole === 'S') {
-      // Admin/Super Admin daily stats
+      // Admin/Super Admin daily stats - query from actual tables
       const adminDailyQuery = `
         SELECT
-          COUNT(CASE WHEN action_type = 'delivery_processed' THEN 1 END)::int as deliveries_processed,
-          COUNT(CASE WHEN action_type = 'package_created' THEN 1 END)::int as packages_created,
-          COUNT(CASE WHEN action_type = 'prealert_confirmation' THEN 1 END)::int as prealerts_confirmed,
-          COUNT(CASE WHEN action_type = 'transfer_created' THEN 1 END)::int as transfers_created,
-          COALESCE(SUM(CASE WHEN action_type = 'delivery_processed' THEN revenue_impact ELSE 0 END), 0)::numeric as total_revenue_collected
-        FROM Staff_Actions_Log
-        WHERE staff_id = $1
-        AND DATE(created_at) = $2
+          (SELECT COUNT(*)::int FROM Deliveries WHERE delivered_by = $1 AND DATE(delivered_at) = $2) as deliveries_processed,
+          (SELECT COUNT(*)::int FROM Packages WHERE DATE(created_at) = $2) as packages_created,
+          (SELECT COUNT(*)::int FROM PreAlerts WHERE confirmed_by = $1 AND DATE(confirmed_at) = $2) as prealerts_confirmed,
+          (SELECT COUNT(*)::int FROM Transfers WHERE created_by = $1 AND DATE(created_at) = $2) as transfers_created,
+          (SELECT COALESCE(SUM(p.finalcost), 0)::numeric
+           FROM Deliveries d
+           JOIN Packages p ON d.package_id = p.package_id
+           WHERE d.delivered_by = $1 AND DATE(d.delivered_at) = $2) as total_revenue_collected
       `;
       const result = await pool.query(adminDailyQuery, [staffId, targetDate]);
       dailyStats = result.rows[0];
     }
+
+    console.log('📊 Final daily stats being returned:', dailyStats);
 
     // Return as JSON for download
     res.json({

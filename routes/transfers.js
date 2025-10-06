@@ -74,6 +74,7 @@ router.get('/', authenticateToken, requireAdmin, async (req, res) => {
     const query = `
       SELECT
         t.transfer_id,
+        t.origin,
         t.destination,
         t.status,
         t.notes,
@@ -163,22 +164,22 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { destination, packages, notes } = req.body;
+    const { origin, destination, packages, notes } = req.body;
 
-    if (!destination || !packages || packages.length === 0) {
-      return res.status(400).json({ message: 'Destination and packages are required' });
+    if (!origin || !destination || !packages || packages.length === 0) {
+      return res.status(400).json({ message: 'Origin, destination and packages are required' });
     }
 
     await client.query('BEGIN');
 
     // Create transfer
     const transferQuery = `
-      INSERT INTO transfers (destination, status, notes, created_by, created_at)
-      VALUES ($1, 'created', $2, $3, NOW())
+      INSERT INTO transfers (origin, destination, status, notes, created_by, created_at)
+      VALUES ($1, $2, 'created', $3, $4, NOW())
       RETURNING transfer_id
     `;
 
-    const transferResult = await client.query(transferQuery, [destination, notes || null, req.user.userId]);
+    const transferResult = await client.query(transferQuery, [origin, destination, notes || null, req.user.userId]);
     const transferId = transferResult.rows[0].transfer_id;
 
     // Add packages to transfer
@@ -199,9 +200,9 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
       'transfer_creation',
       'transfer',
       transferId,
-      `Created transfer list to ${destination} with ${packages.length} packages`,
+      `Created transfer list from ${origin} to ${destination} with ${packages.length} packages`,
       0,
-      { destination, packageCount: packages.length, packages, notes }
+      { origin, destination, packageCount: packages.length, packages, notes }
     );
 
     // Update staff performance metrics
@@ -359,17 +360,22 @@ router.delete('/:transferId/packages/:packageId', authenticateToken, requireAdmi
   }
 });
 
-// PATCH /transfers/:id - Update transfer details (destination, notes)
+// PATCH /transfers/:id - Update transfer details (origin, destination, notes)
 router.patch('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { destination, notes } = req.body;
+    const { origin, destination, notes } = req.body;
 
-    console.log('✏️ Updating transfer:', id, 'Data:', { destination, notes });
+    console.log('✏️ Updating transfer:', id, 'Data:', { origin, destination, notes });
 
     const updates = [];
     const values = [];
     let paramCount = 1;
+
+    if (origin !== undefined) {
+      updates.push(`origin = $${paramCount++}`);
+      values.push(origin);
+    }
 
     if (destination !== undefined) {
       updates.push(`destination = $${paramCount++}`);

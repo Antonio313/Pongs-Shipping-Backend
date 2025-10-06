@@ -6,7 +6,7 @@ const Package = {
   findByUserId: async (userId) => {
     try {
       const result = await pool.query(
-        `SELECT p.*, u.first_name, u.last_name, u.email, u.phone
+        `SELECT p.*, u.first_name, u.last_name, u.email, u.phone, u.customer_number
          FROM packages p
          JOIN users u ON p.user_id = u.user_id
          WHERE p.user_id = $1
@@ -23,7 +23,7 @@ const Package = {
   findById: async (packageId) => {
     try {
       const result = await pool.query(
-        `SELECT p.*, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch
+        `SELECT p.*, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch, u.customer_number
          FROM packages p
          JOIN users u ON p.user_id = u.user_id
          WHERE p.package_id = $1`,
@@ -39,7 +39,7 @@ const Package = {
   findByTrackingNumber: async (trackingNumber) => {
     try {
       const result = await pool.query(
-        `SELECT p.*, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch
+        `SELECT p.*, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch, u.customer_number
          FROM packages p
          JOIN users u ON p.user_id = u.user_id
          WHERE p.tracking_number = $1`,
@@ -155,7 +155,7 @@ const Package = {
   findAll: async (filters = {}) => {
     try {
       let query = `
-        SELECT p.*, u.first_name, u.last_name, u.email, u.phone, u.branch
+        SELECT p.*, u.first_name, u.last_name, u.email, u.phone, u.branch, u.customer_number
         FROM packages p
         JOIN users u ON p.user_id = u.user_id
       `;

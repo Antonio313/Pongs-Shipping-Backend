@@ -50,6 +50,7 @@ router.get('/ready-for-pickup', authenticateToken, async (req, res) => {
     const query = `
       SELECT
         u.user_id,
+        u.customer_number,
         u.first_name,
         u.last_name,
         u.email,
@@ -73,7 +74,7 @@ router.get('/ready-for-pickup', authenticateToken, async (req, res) => {
       FROM Users u
       JOIN Packages p ON u.user_id = p.user_id
       WHERE p.status = 'Ready For Pickup'
-      GROUP BY u.user_id, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch
+      GROUP BY u.user_id, u.customer_number, u.first_name, u.last_name, u.email, u.phone, u.address, u.branch
       ORDER BY u.last_name, u.first_name
     `;
 
